@@ -22,9 +22,10 @@ export const createStoreAdminSchema = z.object({
     mobileNumber: z
       .string()
       .trim()
+      .length(10, 'Mobile number must be exactly 10 digits')
       .regex(
         /^[6-9]\d{9}$/,
-        'Mobile number must be a valid 10-digit Indian mobile number'
+        'Mobile number must be a valid 10-digit Indian mobile number starting with 6-9'
       ),
 
     password: z
@@ -95,9 +96,10 @@ export const updateStoreAdminSchema = z.object({
     mobileNumber: z
       .string()
       .trim()
+      .length(10, 'Mobile number must be exactly 10 digits')
       .regex(
         /^[6-9]\d{9}$/,
-        'Mobile number must be a valid 10-digit Indian mobile number'
+        'Mobile number must be a valid 10-digit Indian mobile number starting with 6-9'
       )
       .optional(),
 
@@ -149,3 +151,41 @@ export type UpdateStoreAdminParams = z.infer<
 export type DeleteStoreAdminParams = z.infer<
   typeof deleteStoreAdminParamsSchema
 >['params'];
+
+export const checkMobileNumberQuerySchema = z.object({
+  querystring: z.object({
+    mobileNumber: z
+      .string()
+      .trim()
+      .length(10, 'Mobile number must be exactly 10 digits')
+      .regex(
+        /^[6-9]\d{9}$/,
+        'Mobile number must be a valid 10-digit Indian mobile number starting with 6-9'
+      ),
+  }),
+});
+
+export const loginStoreAdminSchema = z.object({
+  body: z.object({
+    mobileNumber: z
+      .string()
+      .trim()
+      .length(10, 'Mobile number must be exactly 10 digits')
+      .regex(
+        /^[6-9]\d{9}$/,
+        'Mobile number must be a valid 10-digit Indian mobile number starting with 6-9'
+      ),
+    password: z
+      .string()
+      .min(1, 'Password is required')
+      .max(100, 'Password must not exceed 100 characters'),
+  }),
+});
+
+export type CheckMobileNumberQuery = z.infer<
+  typeof checkMobileNumberQuerySchema
+>['querystring'];
+
+export type LoginStoreAdminInput = z.infer<
+  typeof loginStoreAdminSchema
+>['body'];

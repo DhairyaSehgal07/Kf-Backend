@@ -51,9 +51,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register Cookie plugin
   await fastify.register(cookie);
 
-  // Register JWT plugin
+  // Register JWT plugin with production-grade configuration
   await fastify.register(jwt, {
     secret: process.env.AUTH_SECRET || 'your-secret-key-change-in-production',
+    sign: {
+      expiresIn: process.env.JWT_TOKEN_EXPIRY || '7d', // 1 week token validity
+    },
+    cookie: {
+      cookieName: 'accessToken',
+      signed: false,
+    },
   });
 
   // Register rate limiter plugin (global: false to apply only where configured)
@@ -72,18 +79,66 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register cold storage routes
   await fastify.register(coldStorageRoutes, {
-    prefix: '/api/bhatti/v1/cold-storage',
+    prefix: '/api/v1/cold-storage',
   });
 
   // Register store admin routes
   await fastify.register(storeAdminRoutes, {
-    prefix: '/api/bhatti/v1/store-admin',
+    prefix: '/api/v1/store-admin',
   });
 
   // Global error handler
-  fastify.setErrorHandler((error: Error, _request, reply) => {
-    fastify.log.error(error, 'Unhandled error');
-    void reply.code(500).send({
+  fastify.setErrorHandler((error: Error, request, reply) => {
+    // Handle known error types
+    if ('statusCode' in error && 'code' in error) {
+      const appError = error as {
+        statusCode: number;
+        code: string;
+        message: string;
+      };
+      fastify.log.error(
+        { error, statusCode: appError.statusCode, code: appError.code },
+        'Application error'
+      );
+      return reply.code(appError.statusCode).send({
+        success: false,
+        error: {
+          code: appError.code,
+          message: appError.message,
+        },
+      });
+    }
+
+    // Handle JWT errors
+    if (error.message.includes('jwt') || error.message.includes('token')) {
+      fastify.log.warn({ error }, 'JWT authentication error');
+      return reply.code(401).send({
+        success: false,
+        error: {
+          code: 'AUTHENTICATION_ERROR',
+          message: 'Authentication failed',
+        },
+      });
+    }
+
+    // Handle validation errors
+    if (
+      error.message.includes('validation') ||
+      error.message.includes('schema')
+    ) {
+      fastify.log.warn({ error }, 'Validation error');
+      return reply.code(400).send({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    fastify.log.error({ error }, 'Unhandled error');
+    return reply.code(500).send({
       success: false,
       error: {
         code: 'INTERNAL_SERVER_ERROR',

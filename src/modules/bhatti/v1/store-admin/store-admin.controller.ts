@@ -5,6 +5,9 @@ import {
   getStoreAdminById,
   updateStoreAdmin,
   deleteStoreAdmin,
+  checkMobileNumber,
+  loginStoreAdmin,
+  logoutStoreAdmin,
 } from './store-admin.service';
 import {
   CreateStoreAdminInput,
@@ -13,12 +16,15 @@ import {
   UpdateStoreAdminInput,
   UpdateStoreAdminParams,
   DeleteStoreAdminParams,
+  CheckMobileNumberQuery,
+  LoginStoreAdminInput,
 } from './store-admin.schema';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
+  UnauthorizedError,
 } from '../../../../utils/errors';
 
 /**
@@ -335,6 +341,178 @@ export async function deleteStoreAdminHandler(
         },
       });
     }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for checking if mobile number is available
+ */
+export async function checkMobileNumberHandler(
+  request: FastifyRequest<{ Querystring: CheckMobileNumberQuery }>,
+  reply: FastifyReply
+) {
+  try {
+    await checkMobileNumber(request.query.mobileNumber, request.log);
+
+    return reply.send({
+      success: true,
+      data: { available: true },
+      message: 'Mobile number is available',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in checkMobileNumberHandler'
+    );
+
+    if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for store admin login
+ */
+export async function loginStoreAdminHandler(
+  request: FastifyRequest<{ Body: LoginStoreAdminInput }>,
+  reply: FastifyReply
+) {
+  try {
+    const result = await loginStoreAdmin(request.body, request.log);
+
+    const payload = {
+      id: result.storeAdmin._id,
+      mobileNumber: result.storeAdmin.mobileNumber,
+      role: result.storeAdmin.role,
+      coldStorageId: result.storeAdmin.coldStorageId,
+    };
+
+    // Generate JWT token (1 week validity)
+    const token = request.server.jwt.sign(payload, {
+      expiresIn: process.env.JWT_TOKEN_EXPIRY || '7d',
+    });
+
+    return reply.send({
+      success: true,
+      data: {
+        storeAdmin: result.storeAdmin,
+        token,
+      },
+      message: 'Login successful',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, body: request.body },
+      'Error in loginStoreAdminHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for store admin logout
+ */
+export async function logoutStoreAdminHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    await logoutStoreAdmin(request.log);
+
+    return reply.send({
+      success: true,
+      message: 'Logout successful',
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in logoutStoreAdminHandler');
 
     if (error instanceof AppError) {
       return reply.code(error.statusCode).send({

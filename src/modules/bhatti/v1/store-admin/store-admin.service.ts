@@ -2,17 +2,20 @@ import { StoreAdmin, Role } from './store-admin.model';
 import {
   CreateStoreAdminInput,
   GetStoreAdminsQuery,
+  LoginStoreAdminInput,
 } from './store-admin.schema';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
+  UnauthorizedError,
 } from '../../../../utils/errors';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { RolePermission } from '../role-permission/role-permission.model';
 import type { ResourcePermission } from '../role-permission/role-permission.model';
+import bcrypt from 'bcryptjs';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -155,7 +158,10 @@ export async function createStoreAdmin(
 
     // Handle mongoose duplicate key errors
     if (error instanceof Error && 'code' in error && error.code === 11000) {
-      const field = Object.keys((error as any).keyPattern || {})[0] || 'field';
+      const mongooseError = error as Error & {
+        keyPattern?: Record<string, unknown>;
+      };
+      const field = Object.keys(mongooseError.keyPattern || {})[0] || 'field';
       throw new ConflictError(`${field} already exists`, 'DUPLICATE_KEY_ERROR');
     }
 
@@ -422,7 +428,10 @@ export async function updateStoreAdmin(
 
     // Handle mongoose duplicate key errors
     if (error instanceof Error && 'code' in error && error.code === 11000) {
-      const field = Object.keys((error as any).keyPattern || {})[0] || 'field';
+      const mongooseError = error as Error & {
+        keyPattern?: Record<string, unknown>;
+      };
+      const field = Object.keys(mongooseError.keyPattern || {})[0] || 'field';
       throw new ConflictError(`${field} already exists`, 'DUPLICATE_KEY_ERROR');
     }
 
@@ -474,5 +483,189 @@ export async function deleteStoreAdmin(id: string, logger?: FastifyBaseLogger) {
       500,
       'DELETE_STORE_ADMIN_ERROR'
     );
+  }
+}
+
+/**
+ * Checks if a mobile number is already used for any cold storage
+ * @param mobileNumber - Mobile number to check
+ * @param logger - Optional logger instance
+ * @throws ConflictError if mobile number is already in use
+ */
+export async function checkMobileNumber(
+  mobileNumber: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    // Check if mobile number exists in any store admin
+    const existing = await StoreAdmin.findOne({ mobileNumber }).lean();
+
+    if (existing) {
+      logger?.warn(
+        { mobileNumber },
+        'Mobile number already exists for a cold storage'
+      );
+      throw new ConflictError(
+        'Mobile number is already in use for a cold storage',
+        'MOBILE_NUMBER_EXISTS'
+      );
+    }
+
+    logger?.info({ mobileNumber }, 'Mobile number is available');
+    return { available: true };
+  } catch (error) {
+    // Re-throw known errors
+    if (error instanceof ConflictError) {
+      throw error;
+    }
+
+    logger?.error({ error, mobileNumber }, 'Error checking mobile number');
+
+    throw new AppError(
+      'Failed to check mobile number',
+      500,
+      'CHECK_MOBILE_NUMBER_ERROR'
+    );
+  }
+}
+
+/**
+ * Authenticates a store admin and returns JWT token with populated cold storage
+ * @param payload - Login credentials (mobileNumber and password)
+ * @param logger - Optional logger instance
+ * @returns Object containing store admin data, cold storage, and token
+ * @throws UnauthorizedError if credentials are invalid
+ * @throws NotFoundError if store admin not found
+ */
+export async function loginStoreAdmin(
+  payload: LoginStoreAdminInput,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    // Find store admin by mobile number and include password
+    const storeAdmin = await StoreAdmin.findOne({
+      mobileNumber: payload.mobileNumber,
+    })
+      .select('+password')
+      .populate('coldStorageId')
+      .lean();
+
+    if (!storeAdmin) {
+      logger?.warn(
+        { mobileNumber: payload.mobileNumber },
+        'Store admin not found for login'
+      );
+      throw new UnauthorizedError(
+        'Invalid mobile number or password',
+        'INVALID_CREDENTIALS'
+      );
+    }
+
+    // Check if account is locked
+    if (storeAdmin.lockedUntil && storeAdmin.lockedUntil > new Date()) {
+      logger?.warn(
+        { storeAdminId: storeAdmin._id },
+        'Attempted login to locked account'
+      );
+      throw new UnauthorizedError(
+        'Account is locked. Please try again later.',
+        'ACCOUNT_LOCKED'
+      );
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(
+      payload.password,
+      storeAdmin.password
+    );
+
+    if (!isPasswordValid) {
+      // Increment failed login attempts
+      const updatedAdmin = await StoreAdmin.findByIdAndUpdate(
+        storeAdmin._id,
+        {
+          $inc: { failedLoginAttempts: 1 },
+        },
+        { new: true }
+      );
+
+      const failedAttempts = updatedAdmin?.failedLoginAttempts || 0;
+      const MAX_FAILED_ATTEMPTS = 5;
+      const LOCKOUT_DURATION_MINUTES = 30;
+
+      // Lock account after MAX_FAILED_ATTEMPTS failed attempts
+      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        const lockoutUntil = new Date();
+        lockoutUntil.setMinutes(
+          lockoutUntil.getMinutes() + LOCKOUT_DURATION_MINUTES
+        );
+
+        await StoreAdmin.findByIdAndUpdate(storeAdmin._id, {
+          $set: { lockedUntil: lockoutUntil },
+        });
+
+        logger?.warn(
+          { storeAdminId: storeAdmin._id, failedAttempts },
+          'Account locked due to too many failed login attempts'
+        );
+        throw new UnauthorizedError(
+          `Account has been locked due to ${MAX_FAILED_ATTEMPTS} failed login attempts. Please try again after ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          'ACCOUNT_LOCKED'
+        );
+      }
+
+      logger?.warn(
+        { storeAdminId: storeAdmin._id, failedAttempts },
+        'Invalid password attempt'
+      );
+      throw new UnauthorizedError(
+        'Invalid mobile number or password',
+        'INVALID_CREDENTIALS'
+      );
+    }
+
+    // Reset failed login attempts on successful login
+    await StoreAdmin.findByIdAndUpdate(storeAdmin._id, {
+      $set: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+
+    // Remove password from response
+    const { password: _password, ...storeAdminWithoutPassword } = storeAdmin;
+
+    logger?.info(
+      { storeAdminId: storeAdmin._id },
+      'Store admin logged in successfully'
+    );
+
+    return {
+      storeAdmin: storeAdminWithoutPassword,
+    };
+  } catch (error) {
+    // Re-throw known errors
+    if (error instanceof UnauthorizedError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, mobileNumber: payload.mobileNumber },
+      'Error during login'
+    );
+
+    throw new AppError('Failed to login', 500, 'LOGIN_ERROR');
+  }
+}
+
+/**
+ * Logs out a store admin (placeholder for future session management)
+ * @param logger - Optional logger instance
+ * @returns Success message
+ */
+export async function logoutStoreAdmin(logger?: FastifyBaseLogger) {
+  try {
+    logger?.info('Store admin logged out');
+    return { message: 'Logged out successfully' };
+  } catch (error) {
+    logger?.error({ error }, 'Error during logout');
+    throw new AppError('Failed to logout', 500, 'LOGOUT_ERROR');
   }
 }

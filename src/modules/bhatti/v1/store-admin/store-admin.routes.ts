@@ -5,6 +5,9 @@ import {
   getStoreAdminByIdHandler,
   updateStoreAdminHandler,
   deleteStoreAdminHandler,
+  checkMobileNumberHandler,
+  loginStoreAdminHandler,
+  logoutStoreAdminHandler,
 } from './store-admin.controller';
 import {
   createStoreAdminSchema,
@@ -12,7 +15,11 @@ import {
   getStoreAdminByIdParamsSchema,
   updateStoreAdminSchema,
   deleteStoreAdminParamsSchema,
+  checkMobileNumberQuerySchema,
+  loginStoreAdminSchema,
 } from './store-admin.schema';
+import { authenticate, authorize } from '../../../../utils/auth';
+import { Role } from './store-admin.model';
 
 /**
  * Register store admin routes
@@ -82,6 +89,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      preHandler: [authenticate, authorize(Role.Admin)], // Only Admin can create store admins
       config: {
         rateLimit: {
           max: 10, // 10 requests
@@ -89,7 +97,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    createStoreAdminHandler
+    createStoreAdminHandler as never
   );
 
   // Get all store admins with pagination
@@ -126,6 +134,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
           max: 100, // 100 requests
@@ -133,7 +142,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    getStoreAdminsHandler
+    getStoreAdminsHandler as never
   );
 
   // Get store admin by ID
@@ -184,6 +193,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
           max: 100, // 100 requests
@@ -191,7 +201,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    getStoreAdminByIdHandler
+    getStoreAdminByIdHandler as never
   );
 
   // Update store admin
@@ -257,6 +267,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
           max: 20, // 20 requests
@@ -264,7 +275,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    updateStoreAdminHandler
+    updateStoreAdminHandler as never
   );
 
   // Delete store admin
@@ -316,6 +327,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
+      preHandler: [authenticate, authorize(Role.Admin)], // Only Admin can delete store admins
       config: {
         rateLimit: {
           max: 10, // 10 requests
@@ -323,6 +335,137 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    deleteStoreAdminHandler
+    deleteStoreAdminHandler as never
+  );
+
+  // Check mobile number availability
+  fastify.get(
+    '/check-mobile',
+    {
+      schema: {
+        ...checkMobileNumberQuerySchema,
+        description: 'Check if mobile number is available for a cold storage',
+        tags: ['Store Admin'],
+        summary: 'Check mobile number availability',
+        response: {
+          200: {
+            description: 'Mobile number is available',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  available: { type: 'boolean' },
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          409: {
+            description: 'Mobile number already exists',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 30, // 30 requests per minute for checking availability
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    checkMobileNumberHandler
+  );
+
+  // Login store admin
+  fastify.post(
+    '/login',
+    {
+      schema: {
+        ...loginStoreAdminSchema,
+        description: 'Login store admin with mobile number and password',
+        tags: ['Store Admin'],
+        summary: 'Login store admin',
+        response: {
+          200: {
+            description: 'Login successful',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  storeAdmin: { type: 'object', additionalProperties: true },
+                  token: { type: 'string' },
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          401: {
+            description: 'Unauthorized - invalid credentials',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5, // 5 requests per minute for login (stricter)
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    loginStoreAdminHandler
+  );
+
+  // Logout store admin
+  fastify.post(
+    '/logout',
+    {
+      schema: {
+        description: 'Logout store admin',
+        tags: ['Store Admin'],
+        summary: 'Logout store admin',
+        response: {
+          200: {
+            description: 'Logout successful',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate], // Require authentication to logout
+      config: {
+        rateLimit: {
+          max: 20, // 20 requests
+          timeWindow: '1 minute', // per minute
+        },
+      },
+    },
+    logoutStoreAdminHandler as never
   );
 }

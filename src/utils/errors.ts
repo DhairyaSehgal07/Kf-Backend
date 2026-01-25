@@ -55,3 +55,15 @@ export class ValidationError extends AppError {
     super(message, 400, code);
   }
 }
+
+export class UnauthorizedError extends AppError {
+  constructor(message: string = 'Unauthorized', code: string = 'UNAUTHORIZED') {
+    super(message, 401, code);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'Forbidden', code: string = 'FORBIDDEN') {
+    super(message, 403, code);
+  }
+}
