@@ -3,12 +3,12 @@ import {
   createColdStorage,
   getColdStorages,
   getColdStorageById,
-} from './cold-storage-service';
+} from './cold-storage.service';
 import {
   CreateColdStorageInput,
   GetColdStoragesQuery,
   GetColdStorageByIdParams,
-} from './cold-storage-schema';
+} from './cold-storage.schema';
 import {
   AppError,
   NotFoundError,

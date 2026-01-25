@@ -25,7 +25,6 @@ export interface IColdStorage extends Document {
   links: Types.ObjectId[]; // FarmerStorageLink references
   incomingOrders: Types.ObjectId[]; // IncomingOrder references
   outgoingOrders: Types.ObjectId[]; // OutgoingOrder references
-  subscription?: Types.ObjectId;
 }
 
 // Mongoose schema
@@ -68,7 +67,6 @@ const ColdStorageSchema = new Schema<IColdStorage>(
         default: [],
       },
     ],
-    subscription: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
   },
   {
     timestamps: true, // adds createdAt and updatedAt

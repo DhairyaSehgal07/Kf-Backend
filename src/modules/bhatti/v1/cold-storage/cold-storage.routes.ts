@@ -3,12 +3,12 @@ import {
   createColdStorageHandler,
   getColdStoragesHandler,
   getColdStorageByIdHandler,
-} from './cold-storage-controller';
+} from './cold-storage.controller';
 import {
   createColdStorageSchema,
   getColdStoragesQuerySchema,
   getColdStorageByIdParamsSchema,
-} from './cold-storage-schema';
+} from './cold-storage.schema';
 
 /**
  * Register cold storage routes
@@ -30,7 +30,10 @@ export async function coldStorageRoutes(fastify: FastifyInstance) {
             type: 'object',
             properties: {
               success: { type: 'boolean' },
-              data: { type: 'object' },
+              data: {
+                type: 'object',
+                additionalProperties: true,
+              },
               message: { type: 'string' },
             },
           },
@@ -133,7 +136,10 @@ export async function coldStorageRoutes(fastify: FastifyInstance) {
             type: 'object',
             properties: {
               success: { type: 'boolean' },
-              data: { type: 'object' },
+              data: {
+                type: 'object',
+                additionalProperties: true,
+              },
             },
           },
           400: {

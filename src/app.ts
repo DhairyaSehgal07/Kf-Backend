@@ -5,6 +5,8 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { config } from 'dotenv';
+import { coldStorageRoutes } from './modules/bhatti/v1/cold-storage/cold-storage.routes.js';
+import { storeAdminRoutes } from './modules/bhatti/v1/store-admin/store-admin.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -67,6 +69,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     timestamp: new Date().toISOString(),
     service: 'Bhatti-backend',
   }));
+
+  // Register cold storage routes
+  await fastify.register(coldStorageRoutes, {
+    prefix: '/api/bhatti/v1/cold-storage',
+  });
+
+  // Register store admin routes
+  await fastify.register(storeAdminRoutes, {
+    prefix: '/api/bhatti/v1/store-admin',
+  });
 
   // Global error handler
   fastify.setErrorHandler((error: Error, _request, reply) => {

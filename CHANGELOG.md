@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-25
+
+### Added
+
+- **Store Admin Module**
+  - Added complete store admin module with routes, controller, service, model, and schema
+  - Integrated store admin routes into main application at `/api/bhatti/v1/store-admin`
+
+- **Role Permission Module**
+  - Added role permission module structure with routes, controller, service, model, and schema
+  - Foundation for role-based access control system
+
+### Changed
+
+- **Cold Storage Module Refactoring**
+  - Renamed cold storage module files from kebab-case to camelCase for consistency
+  - Updated file naming convention: `cold-storage-controller.ts` → `cold-storage.controller.ts`
+  - Updated file naming convention: `cold-storage-model.ts` → `cold-storage.model.ts`
+  - Updated file naming convention: `cold-storage-routes.ts` → `cold-storage.routes.ts`
+  - Updated file naming convention: `cold-storage-schema.ts` → `cold-storage.schema.ts`
+  - Updated file naming convention: `cold-storage-service.ts` → `cold-storage.service.ts`
+
+- **Application Configuration**
+  - Updated `app.ts` to register store admin routes
+  - Improved route organization and module structure
+
 ## [1.0.0] - 2026-01-25
 
 ### Added

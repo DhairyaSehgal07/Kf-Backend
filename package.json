@@ -1,6 +1,6 @@
 {
   "name": "bhatti-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "main": "dist/server.js",
   "type": "module",
@@ -47,6 +47,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
+    "bcryptjs": "^3.0.3",
     "colors": "^1.4.0",
     "dotenv": "^17.2.3",
     "fastify": "^5.7.1",

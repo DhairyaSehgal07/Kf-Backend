@@ -1,8 +1,8 @@
-import { ColdStorage } from './cold-storage-model';
+import { ColdStorage } from './cold-storage.model';
 import {
   CreateColdStorageInput,
   GetColdStoragesQuery,
-} from './cold-storage-schema';
+} from './cold-storage.schema';
 import {
   ConflictError,
   NotFoundError,
