@@ -8,6 +8,8 @@ import {
   checkMobileNumber,
   loginStoreAdmin,
   logoutStoreAdmin,
+  quickRegisterFarmer,
+  updateFarmerStorageLink,
 } from './store-admin.service';
 import {
   CreateStoreAdminInput,
@@ -18,6 +20,9 @@ import {
   DeleteStoreAdminParams,
   CheckMobileNumberQuery,
   LoginStoreAdminInput,
+  QuickRegisterFarmerInput,
+  UpdateFarmerStorageLinkInput,
+  UpdateFarmerStorageLinkParams,
 } from './store-admin.schema';
 import {
   AppError,
@@ -513,6 +518,167 @@ export async function logoutStoreAdminHandler(
     });
   } catch (error) {
     request.log.error({ error }, 'Error in logoutStoreAdminHandler');
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for quick registering a farmer
+ */
+export async function quickRegisterFarmerHandler(
+  request: FastifyRequest<{ Body: QuickRegisterFarmerInput }>,
+  reply: FastifyReply
+) {
+  try {
+    const result = await quickRegisterFarmer(request.body, request.log);
+
+    return reply.code(201).send({
+      success: true,
+      data: result,
+      message: 'Farmer registered successfully',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, body: request.body },
+      'Error in quickRegisterFarmerHandler'
+    );
+
+    if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for updating a farmer-storage-link
+ */
+export async function updateFarmerStorageLinkHandler(
+  request: FastifyRequest<{
+    Params: UpdateFarmerStorageLinkParams;
+    Body: UpdateFarmerStorageLinkInput;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const result = await updateFarmerStorageLink(
+      request.params.id,
+      request.body,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: result,
+      message: 'Farmer-storage-link updated successfully',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params, body: request.body },
+      'Error in updateFarmerStorageLinkHandler'
+    );
+
+    if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
 
     if (error instanceof AppError) {
       return reply.code(error.statusCode).send({

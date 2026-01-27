@@ -3,6 +3,8 @@ import {
   CreateStoreAdminInput,
   GetStoreAdminsQuery,
   LoginStoreAdminInput,
+  QuickRegisterFarmerInput,
+  UpdateFarmerStorageLinkInput,
 } from './store-admin.schema';
 import {
   ConflictError,
@@ -16,6 +18,8 @@ import type { FastifyBaseLogger } from 'fastify';
 import { RolePermission } from '../role-permission/role-permission.model';
 import type { ResourcePermission } from '../role-permission/role-permission.model';
 import bcrypt from 'bcryptjs';
+import { Farmer } from '../farmer/farmer.model';
+import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -667,5 +671,453 @@ export async function logoutStoreAdmin(logger?: FastifyBaseLogger) {
   } catch (error) {
     logger?.error({ error }, 'Error during logout');
     throw new AppError('Failed to logout', 500, 'LOGOUT_ERROR');
+  }
+}
+
+/**
+ * Quick register a farmer and create farmer-storage-link
+ * @param payload - Farmer registration data
+ * @param logger - Optional logger instance
+ * @returns Object containing created farmer and farmer-storage-link
+ * @throws NotFoundError if cold storage or store admin not found
+ * @throws ConflictError if farmer with mobile number already exists or link already exists
+ * @throws ValidationError if input validation fails
+ */
+export async function quickRegisterFarmer(
+  payload: QuickRegisterFarmerInput,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    // Validate cold storage exists
+    const ColdStorage = mongoose.model('ColdStorage');
+    const coldStorage = await ColdStorage.findById(payload.coldStorageId);
+
+    if (!coldStorage) {
+      logger?.warn(
+        { coldStorageId: payload.coldStorageId },
+        'Attempt to register farmer for non-existent cold storage'
+      );
+      throw new NotFoundError(
+        'Cold storage not found',
+        'COLD_STORAGE_NOT_FOUND'
+      );
+    }
+
+    // Validate store admin exists
+    const storeAdmin = await StoreAdmin.findById(payload.linkedById);
+
+    if (!storeAdmin) {
+      logger?.warn(
+        { linkedById: payload.linkedById },
+        'Attempt to register farmer with non-existent store admin'
+      );
+      throw new NotFoundError('Store admin not found', 'STORE_ADMIN_NOT_FOUND');
+    }
+
+    // Check if farmer with mobile number already exists
+    const existingFarmer = await Farmer.findOne({
+      mobileNumber: payload.mobileNumber,
+    });
+
+    if (existingFarmer) {
+      // Check if farmer-storage-link already exists for this farmer and cold storage
+      const existingLink = await FarmerStorageLink.findOne({
+        farmerId: existingFarmer._id,
+        coldStorageId: payload.coldStorageId,
+      });
+
+      if (existingLink) {
+        logger?.warn(
+          {
+            farmerId: existingFarmer._id,
+            coldStorageId: payload.coldStorageId,
+          },
+          'Attempt to create duplicate farmer-storage-link'
+        );
+        throw new ConflictError(
+          'Farmer is already linked to this cold storage',
+          'LINK_ALREADY_EXISTS'
+        );
+      }
+
+      logger?.warn(
+        { mobileNumber: payload.mobileNumber },
+        'Attempt to register farmer with existing mobile number'
+      );
+      throw new ConflictError(
+        'Farmer with this mobile number already exists',
+        'MOBILE_NUMBER_EXISTS'
+      );
+    }
+
+    // Determine account number - use provided or auto-generate
+    let accountNumber: number;
+
+    if (payload.accountNumber !== undefined) {
+      // Check if the provided account number already exists for this cold storage
+      const existingAccountLink = await FarmerStorageLink.findOne({
+        coldStorageId: payload.coldStorageId,
+        accountNumber: payload.accountNumber,
+      });
+
+      if (existingAccountLink) {
+        logger?.warn(
+          {
+            accountNumber: payload.accountNumber,
+            coldStorageId: payload.coldStorageId,
+          },
+          'Attempt to use existing account number'
+        );
+        throw new ConflictError(
+          'Account number already exists for this cold storage',
+          'ACCOUNT_NUMBER_EXISTS'
+        );
+      }
+
+      accountNumber = payload.accountNumber;
+    } else {
+      // Generate account number (find max account number for this cold storage and increment)
+      const maxAccountLink = await FarmerStorageLink.findOne({
+        coldStorageId: payload.coldStorageId,
+      })
+        .sort({ accountNumber: -1 })
+        .select('accountNumber')
+        .lean();
+
+      accountNumber = maxAccountLink ? maxAccountLink.accountNumber + 1 : 1;
+    }
+
+    // Create farmer with default password "123456"
+    const farmer = await Farmer.create({
+      name: payload.name,
+      address: payload.address,
+      mobileNumber: payload.mobileNumber,
+      imageUrl: payload.imageUrl || '',
+      password: '123456', // Default password, will be hashed by pre-save hook
+    });
+
+    logger?.info(
+      {
+        farmerId: farmer._id,
+        name: farmer.name,
+        mobileNumber: farmer.mobileNumber,
+      },
+      'Farmer created successfully'
+    );
+
+    // Create farmer-storage-link
+    const farmerStorageLink = await FarmerStorageLink.create({
+      farmerId: farmer._id,
+      coldStorageId: payload.coldStorageId,
+      linkedById: payload.linkedById,
+      accountNumber,
+      isActive: true,
+    });
+
+    logger?.info(
+      {
+        linkId: farmerStorageLink._id,
+        farmerId: farmer._id,
+        coldStorageId: payload.coldStorageId,
+        accountNumber,
+      },
+      'Farmer-storage-link created successfully'
+    );
+
+    // Return farmer without password and the link
+    const { password: _, ...farmerWithoutPassword } = farmer.toObject();
+
+    return {
+      farmer: farmerWithoutPassword,
+      farmerStorageLink: farmerStorageLink.toObject(),
+    };
+  } catch (error) {
+    // Re-throw known errors
+    if (
+      error instanceof ConflictError ||
+      error instanceof ValidationError ||
+      error instanceof NotFoundError
+    ) {
+      throw error;
+    }
+
+    // Handle mongoose validation errors
+    if (error instanceof mongoose.Error.ValidationError) {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      throw new ValidationError(
+        messages.join(', '),
+        'MONGOOSE_VALIDATION_ERROR'
+      );
+    }
+
+    // Handle mongoose duplicate key errors
+    if (error instanceof Error && 'code' in error && error.code === 11000) {
+      const mongooseError = error as Error & {
+        keyPattern?: Record<string, unknown>;
+      };
+      const field = Object.keys(mongooseError.keyPattern || {})[0] || 'field';
+      throw new ConflictError(`${field} already exists`, 'DUPLICATE_KEY_ERROR');
+    }
+
+    // Log unexpected errors
+    logger?.error(
+      { error, payload },
+      'Unexpected error in quick register farmer'
+    );
+
+    throw new AppError(
+      'Failed to quick register farmer',
+      500,
+      'QUICK_REGISTER_FARMER_ERROR'
+    );
+  }
+}
+
+/**
+ * Updates a farmer-storage-link and associated farmer
+ * @param id - Farmer-storage-link ID
+ * @param payload - Update data
+ * @param logger - Optional logger instance
+ * @returns Object containing updated farmer and farmer-storage-link
+ * @throws NotFoundError if farmer-storage-link not found
+ * @throws ConflictError if accountNumber or mobileNumber already exists
+ * @throws ValidationError if input validation fails
+ */
+export async function updateFarmerStorageLink(
+  id: string,
+  payload: UpdateFarmerStorageLinkInput,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ValidationError(
+        'Invalid farmer-storage-link ID format',
+        'INVALID_ID'
+      );
+    }
+
+    // Find the farmer-storage-link
+    const farmerStorageLink =
+      await FarmerStorageLink.findById(id).populate('farmerId');
+
+    if (!farmerStorageLink) {
+      logger?.warn(
+        { farmerStorageLinkId: id },
+        'Farmer-storage-link not found for update'
+      );
+      throw new NotFoundError(
+        'Farmer-storage-link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    const farmerId = farmerStorageLink.farmerId as mongoose.Types.ObjectId;
+    const coldStorageId = farmerStorageLink.coldStorageId;
+
+    // If accountNumber is being updated, check for uniqueness within the cold storage
+    if (payload.accountNumber !== undefined) {
+      const existingAccountLink = await FarmerStorageLink.findOne({
+        coldStorageId: coldStorageId,
+        accountNumber: payload.accountNumber,
+        _id: { $ne: id }, // Exclude the current link
+      });
+
+      if (existingAccountLink) {
+        logger?.warn(
+          {
+            accountNumber: payload.accountNumber,
+            coldStorageId: coldStorageId,
+            farmerStorageLinkId: id,
+          },
+          'Attempt to update to existing account number'
+        );
+        throw new ConflictError(
+          'Account number already exists for this cold storage',
+          'ACCOUNT_NUMBER_EXISTS'
+        );
+      }
+    }
+
+    // If mobileNumber is being updated, check for conflicts
+    if (payload.mobileNumber !== undefined) {
+      const existingFarmer = await Farmer.findOne({
+        mobileNumber: payload.mobileNumber,
+        _id: { $ne: farmerId }, // Exclude the current farmer
+      });
+
+      if (existingFarmer) {
+        logger?.warn(
+          {
+            mobileNumber: payload.mobileNumber,
+            farmerId: farmerId,
+          },
+          'Attempt to update to existing mobile number'
+        );
+        throw new ConflictError(
+          'Farmer with this mobile number already exists',
+          'MOBILE_NUMBER_EXISTS'
+        );
+      }
+    }
+
+    // If linkedById is being updated, validate store admin exists
+    if (payload.linkedById !== undefined) {
+      const storeAdmin = await StoreAdmin.findById(payload.linkedById);
+
+      if (!storeAdmin) {
+        logger?.warn(
+          { linkedById: payload.linkedById },
+          'Attempt to link to non-existent store admin'
+        );
+        throw new NotFoundError(
+          'Store admin not found',
+          'STORE_ADMIN_NOT_FOUND'
+        );
+      }
+    }
+
+    // Prepare farmer update data
+    const farmerUpdateData: Partial<{
+      name: string;
+      address: string;
+      mobileNumber: string;
+      imageUrl: string;
+    }> = {};
+
+    if (payload.name !== undefined) {
+      farmerUpdateData.name = payload.name;
+    }
+    if (payload.address !== undefined) {
+      farmerUpdateData.address = payload.address;
+    }
+    if (payload.mobileNumber !== undefined) {
+      farmerUpdateData.mobileNumber = payload.mobileNumber;
+    }
+    if (payload.imageUrl !== undefined) {
+      farmerUpdateData.imageUrl = payload.imageUrl;
+    }
+
+    // Prepare farmer-storage-link update data
+    const linkUpdateData: Partial<{
+      accountNumber: number;
+      isActive: boolean;
+      notes: string;
+      linkedById: mongoose.Types.ObjectId;
+    }> = {};
+
+    if (payload.accountNumber !== undefined) {
+      linkUpdateData.accountNumber = payload.accountNumber;
+    }
+    if (payload.isActive !== undefined) {
+      linkUpdateData.isActive = payload.isActive;
+    }
+    if (payload.notes !== undefined) {
+      linkUpdateData.notes = payload.notes;
+    }
+    if (payload.linkedById !== undefined) {
+      linkUpdateData.linkedById = new mongoose.Types.ObjectId(
+        payload.linkedById
+      );
+    }
+
+    // Update farmer if there are farmer fields to update
+    let updatedFarmer = null;
+    if (Object.keys(farmerUpdateData).length > 0) {
+      updatedFarmer = await Farmer.findByIdAndUpdate(
+        farmerId,
+        farmerUpdateData,
+        { new: true, runValidators: true }
+      ).lean();
+
+      if (!updatedFarmer) {
+        logger?.warn({ farmerId }, 'Farmer not found for update');
+        throw new NotFoundError('Farmer not found', 'FARMER_NOT_FOUND');
+      }
+
+      // Remove password from response
+      delete (updatedFarmer as { password?: string }).password;
+    }
+
+    // Update farmer-storage-link
+    const updatedLink = await FarmerStorageLink.findByIdAndUpdate(
+      id,
+      linkUpdateData,
+      { new: true, runValidators: true }
+    )
+      .populate('farmerId')
+      .lean();
+
+    if (!updatedLink) {
+      logger?.warn(
+        { farmerStorageLinkId: id },
+        'Failed to update farmer-storage-link'
+      );
+      throw new NotFoundError(
+        'Farmer-storage-link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    // Get updated farmer if not already fetched
+    if (!updatedFarmer) {
+      updatedFarmer = await Farmer.findById(farmerId).lean();
+      if (updatedFarmer) {
+        delete (updatedFarmer as { password?: string }).password;
+      }
+    }
+
+    logger?.info(
+      {
+        farmerStorageLinkId: id,
+        farmerId: farmerId,
+        updates: { ...farmerUpdateData, ...linkUpdateData },
+      },
+      'Farmer-storage-link updated successfully'
+    );
+
+    return {
+      farmer: updatedFarmer,
+      farmerStorageLink: updatedLink,
+    };
+  } catch (error) {
+    // Re-throw known errors
+    if (
+      error instanceof ConflictError ||
+      error instanceof ValidationError ||
+      error instanceof NotFoundError
+    ) {
+      throw error;
+    }
+
+    // Handle mongoose validation errors
+    if (error instanceof mongoose.Error.ValidationError) {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      throw new ValidationError(
+        messages.join(', '),
+        'MONGOOSE_VALIDATION_ERROR'
+      );
+    }
+
+    // Handle mongoose duplicate key errors
+    if (error instanceof Error && 'code' in error && error.code === 11000) {
+      const mongooseError = error as Error & {
+        keyPattern?: Record<string, unknown>;
+      };
+      const field = Object.keys(mongooseError.keyPattern || {})[0] || 'field';
+      throw new ConflictError(`${field} already exists`, 'DUPLICATE_KEY_ERROR');
+    }
+
+    // Log unexpected errors
+    logger?.error(
+      { error, id, payload },
+      'Unexpected error in update farmer-storage-link'
+    );
+
+    throw new AppError(
+      'Failed to update farmer-storage-link',
+      500,
+      'UPDATE_FARMER_STORAGE_LINK_ERROR'
+    );
   }
 }

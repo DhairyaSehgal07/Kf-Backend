@@ -8,6 +8,8 @@ import {
   checkMobileNumberHandler,
   loginStoreAdminHandler,
   logoutStoreAdminHandler,
+  quickRegisterFarmerHandler,
+  updateFarmerStorageLinkHandler,
 } from './store-admin.controller';
 import {
   createStoreAdminSchema,
@@ -17,6 +19,8 @@ import {
   deleteStoreAdminParamsSchema,
   checkMobileNumberQuerySchema,
   loginStoreAdminSchema,
+  quickRegisterFarmerSchema,
+  updateFarmerStorageLinkSchema,
 } from './store-admin.schema';
 import { authenticate, authorize } from '../../../../utils/auth';
 import { Role } from './store-admin.model';
@@ -467,5 +471,171 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       },
     },
     logoutStoreAdminHandler as never
+  );
+
+  // Quick register farmer
+  fastify.post(
+    '/quick-register-farmer',
+    {
+      schema: {
+        ...quickRegisterFarmerSchema,
+        description: 'Quick register a farmer and create farmer-storage-link',
+        tags: ['Store Admin'],
+        summary: 'Quick register farmer',
+        response: {
+          201: {
+            description: 'Farmer registered successfully',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  farmer: { type: 'object', additionalProperties: true },
+                  farmerStorageLink: {
+                    type: 'object',
+                    additionalProperties: true,
+                  },
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Cold storage or store admin not found',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          409: {
+            description: 'Conflict - resource already exists',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate], // Require authentication
+      config: {
+        rateLimit: {
+          max: 20, // 20 requests
+          timeWindow: '1 minute', // per minute
+        },
+      },
+    },
+    quickRegisterFarmerHandler as never
+  );
+
+  // Update farmer-storage-link
+  fastify.put(
+    '/farmer-storage-link/:id',
+    {
+      schema: {
+        ...updateFarmerStorageLinkSchema,
+        description: 'Update a farmer-storage-link and associated farmer',
+        tags: ['Store Admin'],
+        summary: 'Update farmer-storage-link',
+        response: {
+          200: {
+            description: 'Farmer-storage-link updated successfully',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  farmer: { type: 'object', additionalProperties: true },
+                  farmerStorageLink: {
+                    type: 'object',
+                    additionalProperties: true,
+                  },
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Farmer-storage-link not found',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          409: {
+            description: 'Conflict - resource already exists',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate], // Require authentication
+      config: {
+        rateLimit: {
+          max: 20, // 20 requests
+          timeWindow: '1 minute', // per minute
+        },
+      },
+    },
+    updateFarmerStorageLinkHandler as never
   );
 }
