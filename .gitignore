@@ -42,3 +42,6 @@ generated/
 # .Md
 CONTEXT.md
 API_CURL_COMMANDS.md
+voucher_testing.md
+
+/test-scripts

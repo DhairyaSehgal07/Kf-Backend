@@ -7,6 +7,9 @@ import rateLimit from '@fastify/rate-limit';
 import { config } from 'dotenv';
 import { coldStorageRoutes } from './modules/bhatti/v1/cold-storage/cold-storage.routes.js';
 import { storeAdminRoutes } from './modules/bhatti/v1/store-admin/store-admin.routes.js';
+import { incomingGatePassRoutes } from './modules/bhatti/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
+import { gradingGatePassRoutes } from './modules/bhatti/v1/grading-gate-pass/grading-gate-pass.routes.js';
+import { storageGatePassRoutes } from './modules/bhatti/v1/storage-gate-pass/storage-gate-pass.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -85,6 +88,21 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register store admin routes
   await fastify.register(storeAdminRoutes, {
     prefix: '/api/v1/store-admin',
+  });
+
+  // Register incoming gate pass routes
+  await fastify.register(incomingGatePassRoutes, {
+    prefix: '/api/v1/incoming-gate-pass',
+  });
+
+  // Register grading gate pass routes
+  await fastify.register(gradingGatePassRoutes, {
+    prefix: '/api/v1/grading-gate-pass',
+  });
+
+  // Register storage gate pass routes
+  await fastify.register(storageGatePassRoutes, {
+    prefix: '/api/v1/storage-gate-pass',
   });
 
   // Global error handler
