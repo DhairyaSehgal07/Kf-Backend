@@ -1,7 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import {
   createStoreAdminHandler,
-  getStoreAdminsHandler,
   getStoreAdminByIdHandler,
   updateStoreAdminHandler,
   deleteStoreAdminHandler,
@@ -10,10 +9,11 @@ import {
   logoutStoreAdminHandler,
   quickRegisterFarmerHandler,
   updateFarmerStorageLinkHandler,
+  getFarmerStorageLinksByColdStorageHandler,
+  getNextVoucherNumberHandler,
 } from './store-admin.controller';
 import {
   createStoreAdminSchema,
-  getStoreAdminsQuerySchema,
   getStoreAdminByIdParamsSchema,
   updateStoreAdminSchema,
   deleteStoreAdminParamsSchema,
@@ -21,6 +21,7 @@ import {
   loginStoreAdminSchema,
   quickRegisterFarmerSchema,
   updateFarmerStorageLinkSchema,
+  getVoucherNumberQuerySchema,
 } from './store-admin.schema';
 import { authenticate, authorize } from '../../../../utils/auth';
 import { Role } from './store-admin.model';
@@ -104,49 +105,123 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
     createStoreAdminHandler as never
   );
 
-  // Get all store admins with pagination
+  // Get farmer-storage-links for authenticated user's cold storage (farmerId populated with name, address, mobileNumber)
   fastify.get(
-    '/',
+    '/farmer-storage-links',
     {
       schema: {
-        ...getStoreAdminsQuerySchema,
-        description: 'Get a paginated list of store admins',
+        description:
+          "Get all farmer-storage-links for the authenticated store admin's cold storage with farmer details (name, address, mobileNumber) populated",
         tags: ['Store Admin'],
-        summary: 'Get store admins list',
+        summary: 'Get farmer-storage-links for my cold storage',
         response: {
           200: {
-            description: 'List of store admins',
+            description: 'List of farmer-storage-links with populated farmer',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
                 type: 'array',
-                items: { type: 'object' },
-              },
-              pagination: {
-                type: 'object',
-                properties: {
-                  page: { type: 'number' },
-                  limit: { type: 'number' },
-                  total: { type: 'number' },
-                  totalPages: { type: 'number' },
-                  hasNextPage: { type: 'boolean' },
-                  hasPreviousPage: { type: 'boolean' },
+                items: {
+                  type: 'object',
+                  properties: {
+                    _id: { type: 'string' },
+                    farmerId: {
+                      type: 'object',
+                      properties: {
+                        _id: { type: 'string' },
+                        name: { type: 'string' },
+                        address: { type: 'string' },
+                        mobileNumber: { type: 'string' },
+                      },
+                    },
+                    coldStorageId: { type: 'string' },
+                    accountNumber: { type: 'number' },
+                    isActive: { type: 'boolean' },
+                    notes: { type: 'string' },
+                  },
                 },
               },
             },
           },
         },
       },
-      preHandler: [authenticate], // Require authentication
+      preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100, // 100 requests
-          timeWindow: '1 minute', // per minute
+          max: 100,
+          timeWindow: '1 minute',
         },
       },
     },
-    getStoreAdminsHandler as never
+    getFarmerStorageLinksByColdStorageHandler as never
+  );
+
+  // Get next voucher number for a voucher type (cold storage from auth)
+  fastify.get(
+    '/voucher-number',
+    {
+      schema: {
+        ...getVoucherNumberQuerySchema,
+        description:
+          'Get the next voucher (gate pass) number for the given voucher type, scoped to the authenticated user’s cold storage',
+        tags: ['Store Admin'],
+        summary: 'Get voucher number',
+        response: {
+          200: {
+            description: 'Next voucher number',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                  nextVoucherNumber: { type: 'number' },
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid voucher type',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getNextVoucherNumberHandler as never
   );
 
   // Get store admin by ID

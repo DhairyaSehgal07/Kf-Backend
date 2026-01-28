@@ -1,7 +1,6 @@
 import { StoreAdmin, Role } from './store-admin.model';
 import {
   CreateStoreAdminInput,
-  GetStoreAdminsQuery,
   LoginStoreAdminInput,
   QuickRegisterFarmerInput,
   UpdateFarmerStorageLinkInput,
@@ -20,6 +19,11 @@ import type { ResourcePermission } from '../role-permission/role-permission.mode
 import bcrypt from 'bcryptjs';
 import { Farmer } from '../farmer/farmer.model';
 import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model';
+import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model';
+import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
+import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model';
+import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model';
+import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -176,95 +180,6 @@ export async function createStoreAdmin(
       'Failed to create store admin',
       500,
       'CREATE_STORE_ADMIN_ERROR'
-    );
-  }
-}
-
-/**
- * Retrieves a paginated list of store admins
- * @param query - Query parameters for pagination and filtering
- * @param logger - Optional logger instance
- * @returns Object containing store admins and pagination metadata
- */
-export async function getStoreAdmins(
-  query: GetStoreAdminsQuery,
-  logger?: FastifyBaseLogger
-) {
-  try {
-    const {
-      page,
-      limit,
-      sortBy,
-      sortOrder,
-      coldStorageId,
-      role,
-      isVerified,
-      search,
-    } = query;
-    const skip = (page - 1) * limit;
-
-    // Build filter object
-    const filter: Record<string, unknown> = {};
-
-    if (coldStorageId) {
-      filter.coldStorageId = new mongoose.Types.ObjectId(coldStorageId);
-    }
-
-    if (role) {
-      filter.role = role;
-    }
-
-    if (isVerified !== undefined) {
-      filter.isVerified = isVerified;
-    }
-
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { mobileNumber: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    // Build sort object
-    const sort: Record<string, 1 | -1> = {};
-    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    // Execute queries in parallel
-    const [storeAdmins, total] = await Promise.all([
-      StoreAdmin.find(filter)
-        .select('-password') // Exclude password from results
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      StoreAdmin.countDocuments(filter),
-    ]);
-
-    const totalPages = Math.ceil(total / limit);
-
-    logger?.info(
-      { page, limit, total, totalPages },
-      'Retrieved store admins list'
-    );
-
-    return {
-      data: storeAdmins,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
-    };
-  } catch (error) {
-    logger?.error({ error, query }, 'Error retrieving store admins');
-
-    throw new AppError(
-      'Failed to retrieve store admins',
-      500,
-      'GET_STORE_ADMINS_ERROR'
     );
   }
 }
@@ -529,6 +444,54 @@ export async function checkMobileNumber(
       'Failed to check mobile number',
       500,
       'CHECK_MOBILE_NUMBER_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves all farmer-storage-links for a cold storage with farmer details populated (name, address, mobileNumber)
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Array of farmer-storage-links with populated farmerId
+ */
+export async function getFarmerStorageLinksByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const links = await FarmerStorageLink.find({
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+    })
+      .populate('farmerId', 'name address mobileNumber')
+      .lean();
+
+    logger?.info(
+      { coldStorageId, count: links.length },
+      'Retrieved farmer-storage-links by cold storage'
+    );
+
+    return links;
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving farmer-storage-links by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve farmer-storage-links',
+      500,
+      'GET_FARMER_STORAGE_LINKS_ERROR'
     );
   }
 }
@@ -1120,4 +1083,121 @@ export async function updateFarmerStorageLink(
       'UPDATE_FARMER_STORAGE_LINK_ERROR'
     );
   }
+}
+
+/** Voucher types supported by getNextVoucherNumber */
+export const VOUCHER_TYPES = [
+  'incoming-gate-pass',
+  'grading-gate-pass',
+  'storage-gate-pass',
+  'nikasi-gate-pass',
+  'outgoing-gate-pass',
+] as const;
+
+export type VoucherType = (typeof VOUCHER_TYPES)[number];
+
+/**
+ * Get the next voucher (gate pass) number for the given cold storage and voucher type.
+ * Scopes the max gatePassNo to documents that belong to this cold storage via the link chain.
+ */
+export async function getNextVoucherNumber(
+  coldStorageId: string,
+  type: VoucherType,
+  logger?: FastifyBaseLogger
+): Promise<number> {
+  const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+  // Farmer storage link IDs for this cold storage (used for incoming → grading chain)
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: coldStorageObjectId,
+  })
+    .distinct('_id')
+    .lean();
+
+  if (type === 'incoming-gate-pass') {
+    const last = await IncomingGatePass.findOne({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .sort({ gatePassNo: -1 })
+      .select('gatePassNo')
+      .lean();
+    const next = (last?.gatePassNo ?? 0) + 1;
+    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    return next;
+  }
+
+  if (type === 'grading-gate-pass') {
+    const incomingIds = await IncomingGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .distinct('_id')
+      .lean();
+    const last = await GradingGatePass.findOne({
+      incomingGatePassId: { $in: incomingIds },
+    })
+      .sort({ gatePassNo: -1 })
+      .select('gatePassNo')
+      .lean();
+    const next = (last?.gatePassNo ?? 0) + 1;
+    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    return next;
+  }
+
+  // For storage, nikasi, outgoing we need grading gate pass IDs belonging to this cold storage
+  const incomingIdsForGrading = await IncomingGatePass.find({
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+  })
+    .distinct('_id')
+    .lean();
+  const gradingGatePassIds = await GradingGatePass.find({
+    incomingGatePassId: { $in: incomingIdsForGrading },
+  })
+    .distinct('_id')
+    .lean();
+
+  if (type === 'storage-gate-pass') {
+    const last = await StorageGatePass.findOne({
+      gradingGatePassIds: { $in: gradingGatePassIds },
+    })
+      .sort({ gatePassNo: -1 })
+      .select('gatePassNo')
+      .lean();
+    const next = (last?.gatePassNo ?? 0) + 1;
+    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    return next;
+  }
+
+  if (type === 'nikasi-gate-pass') {
+    const last = await NikasiGatePass.findOne({
+      gradingGatePassIds: { $in: gradingGatePassIds },
+    })
+      .sort({ gatePassNo: -1 })
+      .select('gatePassNo')
+      .lean();
+    const next = (last?.gatePassNo ?? 0) + 1;
+    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    return next;
+  }
+
+  if (type === 'outgoing-gate-pass') {
+    const storageGatePassIds = await StorageGatePass.find({
+      gradingGatePassIds: { $in: gradingGatePassIds },
+    })
+      .distinct('_id')
+      .lean();
+    const last = await OutgoingGatePass.findOne({
+      storageGatePassIds: { $in: storageGatePassIds },
+    })
+      .sort({ gatePassNo: -1 })
+      .select('gatePassNo')
+      .lean();
+    const next = (last?.gatePassNo ?? 0) + 1;
+    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    return next;
+  }
+
+  throw new ValidationError(
+    `Invalid voucher type: ${type}. Must be one of ${VOUCHER_TYPES.join(', ')}`,
+    'INVALID_VOUCHER_TYPE'
+  );
 }

@@ -182,7 +182,6 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
     idempotencyKey: {
       type: String,
       trim: true,
-      sparse: true,
     },
   },
   {

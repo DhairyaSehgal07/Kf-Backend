@@ -225,7 +225,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
     idempotencyKey: {
       type: String,
       trim: true,
-      sparse: true,
     },
   },
   {

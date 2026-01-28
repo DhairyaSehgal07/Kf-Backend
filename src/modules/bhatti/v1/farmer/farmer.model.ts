@@ -61,8 +61,5 @@ farmerSchema.pre('save', async function (this: mongoose.Document & IFarmer) {
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Search index
-farmerSchema.index({ name: 1 });
-
 export const Farmer: Model<IFarmer> =
   mongoose.models.Farmer || mongoose.model<IFarmer>('Farmer', farmerSchema);

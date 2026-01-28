@@ -1,19 +1,20 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createStoreAdmin,
-  getStoreAdmins,
   getStoreAdminById,
   updateStoreAdmin,
   deleteStoreAdmin,
   checkMobileNumber,
+  getFarmerStorageLinksByColdStorage,
   loginStoreAdmin,
   logoutStoreAdmin,
   quickRegisterFarmer,
   updateFarmerStorageLink,
+  getNextVoucherNumber,
+  type VoucherType,
 } from './store-admin.service';
 import {
   CreateStoreAdminInput,
-  GetStoreAdminsQuery,
   GetStoreAdminByIdParams,
   UpdateStoreAdminInput,
   UpdateStoreAdminParams,
@@ -23,6 +24,7 @@ import {
   QuickRegisterFarmerInput,
   UpdateFarmerStorageLinkInput,
   UpdateFarmerStorageLinkParams,
+  GetVoucherNumberQuery,
 } from './store-admin.schema';
 import {
   AppError,
@@ -31,6 +33,7 @@ import {
   ValidationError,
   UnauthorizedError,
 } from '../../../../utils/errors';
+import type { AuthenticatedRequest } from '../../../../utils/auth';
 
 /**
  * Handler for creating a new store admin
@@ -110,53 +113,6 @@ export async function createStoreAdminHandler(
 }
 
 /**
- * Handler for retrieving a list of store admins with pagination
- */
-export async function getStoreAdminsHandler(
-  request: FastifyRequest<{ Querystring: GetStoreAdminsQuery }>,
-  reply: FastifyReply
-) {
-  try {
-    const result = await getStoreAdmins(request.query, request.log);
-
-    return reply.send({
-      success: true,
-      data: result.data,
-      pagination: result.pagination,
-    });
-  } catch (error) {
-    request.log.error(
-      { error, query: request.query },
-      'Error in getStoreAdminsHandler'
-    );
-
-    if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    // Fallback for unexpected errors
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
-      },
-    });
-  }
-}
-
-/**
  * Handler for retrieving a store admin by ID
  */
 export async function getStoreAdminByIdHandler(
@@ -185,6 +141,83 @@ export async function getStoreAdminByIdHandler(
         },
       });
     }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving farmer-storage-links for the authenticated user's cold storage (farmerId populated with name, address, mobileNumber)
+ */
+export async function getFarmerStorageLinksByColdStorageHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      return reply.code(401).send({
+        success: false,
+        error: {
+          code: 'MISSING_COLD_STORAGE',
+          message: 'Cold storage not found in token',
+        },
+      });
+    }
+
+    const links = await getFarmerStorageLinksByColdStorage(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: links,
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getFarmerStorageLinksByColdStorageHandler'
+    );
 
     if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({
@@ -691,6 +724,95 @@ export async function updateFarmerStorageLinkHandler(
     }
 
     // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for getting the next voucher number for a given voucher type.
+ * Uses cold storage ID from the authenticated user.
+ */
+export async function getNextVoucherNumberHandler(
+  request: FastifyRequest<{ Querystring: GetVoucherNumberQuery }>,
+  reply: FastifyReply
+) {
+  try {
+    const authenticatedRequest = request as AuthenticatedRequest;
+    const user = authenticatedRequest.user;
+
+    const coldStorageId =
+      typeof user.coldStorageId === 'string'
+        ? user.coldStorageId
+        : user.coldStorageId?._id;
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage context is required for voucher number',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const nextVoucherNumber = await getNextVoucherNumber(
+      coldStorageId,
+      request.query.type as VoucherType,
+      request.log
+    );
+
+    return reply.code(200).send({
+      success: true,
+      data: {
+        type: request.query.type,
+        nextVoucherNumber,
+      },
+      message: `Next voucher number for ${request.query.type}`,
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getNextVoucherNumberHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
     return reply.code(500).send({
       success: false,
       error: {

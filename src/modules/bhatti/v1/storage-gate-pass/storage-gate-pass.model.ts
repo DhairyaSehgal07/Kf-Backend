@@ -244,7 +244,6 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
     idempotencyKey: {
       type: String,
       trim: true,
-      sparse: true,
     },
   },
   {

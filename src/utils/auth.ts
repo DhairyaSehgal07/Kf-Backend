@@ -6,12 +6,13 @@ import { Role } from '../modules/bhatti/v1/store-admin/store-admin.model';
 
 /**
  * JWT Payload interface
+ * coldStorageId may be a string (ObjectId) or populated object when token was signed with storeAdmin.coldStorageId
  */
 export interface JWTPayload {
   id: string;
   mobileNumber: string;
   role: Role;
-  coldStorageId: string;
+  coldStorageId: string | { _id: string };
   iat?: number;
   exp?: number;
 }

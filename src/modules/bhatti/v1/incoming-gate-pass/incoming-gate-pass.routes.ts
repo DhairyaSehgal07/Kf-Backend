@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   createIncomingGatePassHandler,
   updateIncomingGatePassHandler,
+  getIncomingGatePassesByColdStorageHandler,
 } from './incoming-gate-pass.controller';
 import {
   createIncomingGatePassSchema,
@@ -86,6 +87,57 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createIncomingGatePassHandler as never
+  );
+
+  // Get all incoming gate passes for authenticated user's cold storage
+  fastify.get(
+    '/',
+    {
+      schema: {
+        description:
+          "Get all incoming gate passes for the authenticated store admin's cold storage",
+        tags: ['Incoming Gate Pass'],
+        summary: 'Get incoming gate passes for my cold storage',
+        response: {
+          200: {
+            description: 'List of incoming gate passes',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassesByColdStorageHandler as never
   );
 
   // Update incoming gate pass

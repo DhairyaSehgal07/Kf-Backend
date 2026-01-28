@@ -39,28 +39,6 @@ export const createStoreAdminSchema = z.object({
   }),
 });
 
-export const getStoreAdminsQuerySchema = z.object({
-  querystring: z.object({
-    page: z.coerce.number().int().positive().default(1),
-    limit: z.coerce.number().int().positive().max(100).default(10),
-    sortBy: z
-      .enum(['createdAt', 'name', 'role', 'mobileNumber'])
-      .default('createdAt'),
-    sortOrder: z.enum(['asc', 'desc']).default('desc'),
-    coldStorageId: z
-      .string()
-      .trim()
-      .refine(
-        (val) => !val || mongoose.Types.ObjectId.isValid(val),
-        'Invalid cold storage ID format'
-      )
-      .optional(),
-    role: z.nativeEnum(Role).optional(),
-    isVerified: z.coerce.boolean().optional(),
-    search: z.string().trim().optional(),
-  }),
-});
-
 export const getStoreAdminByIdParamsSchema = z.object({
   params: z.object({
     id: z
@@ -131,10 +109,6 @@ export const deleteStoreAdminParamsSchema = z.object({
 export type CreateStoreAdminInput = z.infer<
   typeof createStoreAdminSchema
 >['body'];
-
-export type GetStoreAdminsQuery = z.infer<
-  typeof getStoreAdminsQuerySchema
->['querystring'];
 
 export type GetStoreAdminByIdParams = z.infer<
   typeof getStoreAdminByIdParamsSchema
@@ -313,3 +287,24 @@ export type UpdateFarmerStorageLinkParams = z.infer<
 export type UpdateFarmerStorageLinkInput = z.infer<
   typeof updateFarmerStorageLinkSchema
 >['body'];
+
+/** Allowed voucher types for Get Voucher Number route */
+export const VOUCHER_TYPE_VALUES = [
+  'incoming-gate-pass',
+  'grading-gate-pass',
+  'storage-gate-pass',
+  'nikasi-gate-pass',
+  'outgoing-gate-pass',
+] as const;
+
+export const getVoucherNumberQuerySchema = z.object({
+  querystring: z.object({
+    type: z.enum(VOUCHER_TYPE_VALUES, {
+      message: `Type must be one of: ${VOUCHER_TYPE_VALUES.join(', ')}`,
+    }),
+  }),
+});
+
+export type GetVoucherNumberQuery = z.infer<
+  typeof getVoucherNumberQuerySchema
+>['querystring'];

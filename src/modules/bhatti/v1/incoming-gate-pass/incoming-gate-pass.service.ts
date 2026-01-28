@@ -386,3 +386,78 @@ export async function updateIncomingGatePass(
     );
   }
 }
+
+/**
+ * Retrieves all incoming gate passes for a cold storage
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Array of incoming gate passes
+ * @throws ValidationError if cold storage ID format is invalid
+ * @throws NotFoundError if cold storage not found in token
+ */
+export async function getIncomingGatePassesByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    // Get all farmer storage link IDs for this cold storage
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all incoming gate passes for these farmer storage links
+    const incomingGatePasses = await IncomingGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .populate({
+        path: 'farmerStorageLinkId',
+        populate: [
+          {
+            path: 'farmerId',
+            select: 'name mobileNumber address',
+          },
+          {
+            path: 'linkedById',
+            select: 'name',
+          },
+        ],
+      })
+      .populate('receivedById', 'name mobileNumber')
+      .sort({ date: -1, gatePassNo: -1 })
+      .lean();
+
+    logger?.info(
+      { coldStorageId, count: incomingGatePasses.length },
+      'Retrieved incoming gate passes by cold storage'
+    );
+
+    return incomingGatePasses;
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving incoming gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve incoming gate passes',
+      500,
+      'GET_INCOMING_GATE_PASSES_ERROR'
+    );
+  }
+}

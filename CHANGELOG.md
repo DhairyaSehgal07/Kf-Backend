@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-29
+
+### Added
+
+- **Incoming Gate Pass Listing by Cold Storage**
+  - Added API to fetch all incoming gate passes for the authenticated store admin's cold storage
+  - Includes farmer, linked-by, and received-by details with proper authentication and error handling
+
+- **Gate Pass Voucher Sequencing Utilities**
+  - Added utilities to generate the next voucher (gate pass) number per cold storage and voucher type
+  - Supports incoming, grading, storage, nikasi, and outgoing gate pass voucher sequencing
+  - Added validation schema for voucher type queries using Zod
+
+### Changed
+
+- **Authentication Payload**
+  - Updated JWT payload typing to support both string and populated `coldStorageId` values for better compatibility
+
+- **Models and Indexes**
+  - Cleaned up Mongoose schema indexes on farmer and gate pass models to simplify idempotency key handling and avoid unnecessary indexes
+
 ## [1.2.0] - 2026-01-28
 
 ### Added
