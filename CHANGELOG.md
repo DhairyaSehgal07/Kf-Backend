@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-28
+
+### Added
+
+- **Nikasi Gate Pass Module**
+  - Added complete nikasi gate pass module with routes, controller, service, model, and schema
+  - Integrated nikasi gate pass routes into main application at `/api/v1/nikasi-gate-pass`
+  - Supports creating nikasi gate passes from grading gate pass allocations
+  - Includes audit trail functionality with nikasi gate pass audit model
+  - Full validation and error handling with rate limiting
+
+- **Outgoing Gate Pass Module**
+  - Added complete outgoing gate pass module with routes, controller, service, model, and schema
+  - Integrated outgoing gate pass routes into main application at `/api/v1/outgoing-gate-pass`
+  - Supports creating outgoing gate passes from storage gate pass allocations
+  - Includes audit trail functionality with outgoing gate pass audit model
+  - Full validation and error handling with rate limiting
+
+### Changed
+
+- **Application Configuration**
+  - Updated `app.ts` to register nikasi gate pass routes
+  - Updated `app.ts` to register outgoing gate pass routes
+  - Improved route organization and module structure
+
 ## [1.1.0] - 2026-01-25
 
 ### Added

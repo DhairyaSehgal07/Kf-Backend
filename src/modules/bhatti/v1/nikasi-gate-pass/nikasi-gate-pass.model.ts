@@ -11,8 +11,26 @@ interface INikasiOrderDetail {
   quantityIssued: number;
 }
 
+/** Snapshot of a grading gate pass at creation time (remaining quantities) */
+export interface INikasiGradingGatePassSnapshotBagSize {
+  size: string;
+  currentQuantity: number;
+  initialQuantity: number;
+  location: string;
+}
+
+export interface INikasiGradingGatePassSnapshot {
+  _id: Types.ObjectId;
+  gatePassNo: number;
+  incomingBagSizes: INikasiGradingGatePassSnapshotBagSize[];
+}
+
 export interface INikasiGatePass extends Document {
   gatePassNo: number;
+  gradingGatePassIds: Types.ObjectId[];
+  /** Snapshot of each grading gate pass state (remaining qty) when this nikasi pass was created */
+  gradingGatePassSnapshots?: INikasiGradingGatePassSnapshot[];
+
   date: Date;
   variety: string;
 
@@ -22,6 +40,9 @@ export interface INikasiGatePass extends Document {
   orderDetails: INikasiOrderDetail[];
 
   remarks?: string;
+
+  /** Idempotency key for create; sparse unique index */
+  idempotencyKey?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +81,35 @@ const NikasiOrderDetailSchema = new Schema<INikasiOrderDetail>(
   { _id: false }
 );
 
+const NikasiGradingGatePassSnapshotBagSizeSchema =
+  new Schema<INikasiGradingGatePassSnapshotBagSize>(
+    {
+      size: { type: String, required: true, trim: true },
+      currentQuantity: { type: Number, required: true, min: 0 },
+      initialQuantity: { type: Number, required: true, min: 0 },
+      location: { type: String, required: true, trim: true },
+    },
+    { _id: false }
+  );
+
+const NikasiGradingGatePassSnapshotSchema =
+  new Schema<INikasiGradingGatePassSnapshot>(
+    {
+      _id: {
+        type: Schema.Types.ObjectId,
+        ref: 'GradingGatePass',
+        required: true,
+      },
+      gatePassNo: { type: Number, required: true },
+      incomingBagSizes: {
+        type: [NikasiGradingGatePassSnapshotBagSizeSchema],
+        required: true,
+        default: [],
+      },
+    },
+    { _id: false }
+  );
+
 /* =======================
    MAIN SCHEMA
 ======================= */
@@ -71,6 +121,23 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    gradingGatePassIds: {
+      type: [Schema.Types.ObjectId],
+      ref: 'GradingGatePass',
+      required: true,
+      validate: {
+        validator: (ids: Types.ObjectId[]) => ids.length > 0,
+        message: 'At least one grading gate pass ID is required',
+      },
+      index: true,
+    },
+
+    gradingGatePassSnapshots: {
+      type: [NikasiGradingGatePassSnapshotSchema],
+      default: undefined,
+      select: true,
     },
 
     date: {
@@ -111,6 +178,12 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       type: String,
       trim: true,
     },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      sparse: true,
+    },
   },
   {
     timestamps: true,
@@ -120,6 +193,11 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
 /* =======================
    INDEXES
 ======================= */
+
+NikasiGatePassSchema.index(
+  { idempotencyKey: 1 },
+  { unique: true, sparse: true }
+);
 
 // Gate passes by date for reporting
 NikasiGatePassSchema.index({ date: -1 });

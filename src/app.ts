@@ -10,6 +10,8 @@ import { storeAdminRoutes } from './modules/bhatti/v1/store-admin/store-admin.ro
 import { incomingGatePassRoutes } from './modules/bhatti/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
 import { gradingGatePassRoutes } from './modules/bhatti/v1/grading-gate-pass/grading-gate-pass.routes.js';
 import { storageGatePassRoutes } from './modules/bhatti/v1/storage-gate-pass/storage-gate-pass.routes.js';
+import { nikasiGatePassRoutes } from './modules/bhatti/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
+import { outgoingGatePassRoutes } from './modules/bhatti/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -103,6 +105,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register storage gate pass routes
   await fastify.register(storageGatePassRoutes, {
     prefix: '/api/v1/storage-gate-pass',
+  });
+
+  // Register nikasi gate pass routes
+  await fastify.register(nikasiGatePassRoutes, {
+    prefix: '/api/v1/nikasi-gate-pass',
+  });
+
+  // Register outgoing gate pass routes
+  await fastify.register(outgoingGatePassRoutes, {
+    prefix: '/api/v1/outgoing-gate-pass',
   });
 
   // Global error handler
