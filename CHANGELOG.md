@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-30
+
+### Added
+
+- **Nikasi Gate Pass Listing by Cold Storage**
+  - Added GET `/api/v1/nikasi-gate-pass` to fetch all nikasi gate passes for the authenticated store admin's cold storage
+  - Returns nikasi gate passes with populated grading gate pass, incoming gate pass, farmer storage link, farmer, and linked-by details
+  - Includes authentication, rate limiting, and error handling
+
+### Changed
+
+- **Nikasi Gate Pass Model**
+  - Removed `location` field from nikasi grading gate pass snapshot bag size (interface and schema)
+
+- **Nikasi Gate Pass Service**
+  - Added size normalization for bag sizes (handles en-dash, hyphen, and Unicode dash variants) so allocations match correctly across grading and nikasi
+  - Fixed bulk update operations to use grading pass map and original `orderDetails.size` in array filters for reliable decrements
+  - Snapshot bag sizes no longer include a `location` field
+
 ## [1.3.0] - 2026-01-29
 
 ### Added

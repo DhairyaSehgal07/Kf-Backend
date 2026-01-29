@@ -16,7 +16,6 @@ export interface INikasiGradingGatePassSnapshotBagSize {
   size: string;
   currentQuantity: number;
   initialQuantity: number;
-  location: string;
 }
 
 export interface INikasiGradingGatePassSnapshot {
@@ -87,7 +86,6 @@ const NikasiGradingGatePassSnapshotBagSizeSchema =
       size: { type: String, required: true, trim: true },
       currentQuantity: { type: Number, required: true, min: 0 },
       initialQuantity: { type: Number, required: true, min: 0 },
-      location: { type: String, required: true, trim: true },
     },
     { _id: false }
   );

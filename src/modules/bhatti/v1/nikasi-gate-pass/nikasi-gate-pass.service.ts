@@ -38,6 +38,17 @@ interface NikasiOrderDetailInput {
   quantityIssued: number;
 }
 
+/**
+ * Normalizes size string for comparison (e.g. "25-30" and "25–30" en-dash match).
+ * Replaces common dash-like Unicode chars with ASCII hyphen.
+ */
+function normalizeSize(s: string): string {
+  return s
+    .trim()
+    .replace(/[\u2010-\u2015\u2212]/g, '-') // hyphen, en-dash, em-dash, figure dash, etc.
+    .replace(/\s+/g, ' ');
+}
+
 /* =======================
    INPUT VALIDATION
 ======================= */
@@ -138,10 +149,12 @@ async function fetchAndValidateGradingGatePassesForNikasi(
         orderDetails: Array<{ size: string; currentQuantity: number }>;
       }
     ).orderDetails;
-    const detailBySize = new Map(orderDetails.map((d) => [d.size, d]));
+    const detailBySize = new Map(
+      orderDetails.map((d) => [normalizeSize(d.size), d])
+    );
 
     for (const alloc of item.allocations) {
-      const detail = detailBySize.get(alloc.size);
+      const detail = detailBySize.get(normalizeSize(alloc.size));
       if (!detail) {
         throw new ValidationError(
           `Size "${alloc.size}" not found in grading gate pass ${item.gradingGatePassId}`,
@@ -165,7 +178,8 @@ async function fetchAndValidateGradingGatePassesForNikasi(
 ======================= */
 
 function prepareBulkOperationsForNikasi(
-  validated: NikasiGradingPassWithFilteredAllocations[]
+  validated: NikasiGradingPassWithFilteredAllocations[],
+  gradingPassMap: Map<string, IGradingGatePass>
 ): mongoose.mongo.AnyBulkWriteOperation<IGradingGatePass>[] {
   const bulkOps: Array<{
     updateOne: {
@@ -176,7 +190,16 @@ function prepareBulkOperationsForNikasi(
   }> = [];
 
   for (const item of validated) {
+    const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
+      orderDetails: Array<{ size: string; currentQuantity: number }>;
+    };
+    if (!gp?.orderDetails) continue;
+
     for (const alloc of item.allocations) {
+      const od = gp.orderDetails.find(
+        (d) => normalizeSize(d.size) === normalizeSize(alloc.size)
+      );
+      if (!od) continue;
       bulkOps.push({
         updateOne: {
           filter: { _id: new Types.ObjectId(item.gradingGatePassId) },
@@ -187,7 +210,7 @@ function prepareBulkOperationsForNikasi(
           },
           arrayFilters: [
             {
-              'elem.size': alloc.size,
+              'elem.size': od.size,
               'elem.currentQuantity': { $gte: alloc.quantityToAllocate },
             },
           ],
@@ -231,16 +254,17 @@ function buildAllocationStatusUpdatesForNikasi(
 
     const decrementsBySize = new Map<string, number>();
     for (const alloc of item.allocations) {
+      const key = normalizeSize(alloc.size);
       decrementsBySize.set(
-        alloc.size,
-        (decrementsBySize.get(alloc.size) ?? 0) + alloc.quantityToAllocate
+        key,
+        (decrementsBySize.get(key) ?? 0) + alloc.quantityToAllocate
       );
     }
 
     let totalRemaining = 0;
     let totalInitial = 0;
     for (const od of gp.orderDetails) {
-      const dec = decrementsBySize.get(od.size) ?? 0;
+      const dec = decrementsBySize.get(normalizeSize(od.size)) ?? 0;
       totalRemaining += Math.max(0, od.currentQuantity - dec);
       totalInitial += od.initialQuantity;
     }
@@ -286,15 +310,19 @@ function buildNikasiOrderDetails(
     if (!gp?.orderDetails) continue;
 
     const detailBySize = new Map(
-      gp.orderDetails.map((d) => [d.size, d.currentQuantity])
+      gp.orderDetails.map((d) => [normalizeSize(d.size), d])
     );
 
     for (const alloc of item.allocations) {
-      const availableBefore = detailBySize.get(alloc.size) ?? 0;
-      const remaining = Math.max(0, availableBefore - alloc.quantityToAllocate);
+      const detail = detailBySize.get(normalizeSize(alloc.size));
+      if (!detail) continue;
+      const remaining = Math.max(
+        0,
+        detail.currentQuantity - alloc.quantityToAllocate
+      );
 
       orderDetails.push({
-        size: alloc.size,
+        size: detail.size,
         gradingGatePassId: new Types.ObjectId(item.gradingGatePassId),
         quantityAvailable: remaining,
         quantityIssued: alloc.quantityToAllocate,
@@ -329,20 +357,20 @@ function buildGradingGatePassSnapshotsForNikasi(
 
     const allocatedBySize = new Map<string, number>();
     for (const alloc of item.allocations) {
+      const key = normalizeSize(alloc.size);
       allocatedBySize.set(
-        alloc.size,
-        (allocatedBySize.get(alloc.size) ?? 0) + alloc.quantityToAllocate
+        key,
+        (allocatedBySize.get(key) ?? 0) + alloc.quantityToAllocate
       );
     }
 
     const incomingBagSizes = gp.orderDetails.map((od) => {
-      const allocated = allocatedBySize.get(od.size) ?? 0;
+      const allocated = allocatedBySize.get(normalizeSize(od.size)) ?? 0;
       const remaining = Math.max(0, od.currentQuantity - allocated);
       return {
         size: od.size,
         currentQuantity: remaining,
         initialQuantity: od.initialQuantity,
-        location: '-',
       };
     });
 
@@ -449,7 +477,7 @@ export async function createNikasiGatePass(
       logger
     );
 
-    const bulkOps = prepareBulkOperationsForNikasi(validated);
+    const bulkOps = prepareBulkOperationsForNikasi(validated, gradingPassMap);
     if (bulkOps.length === 0) {
       throw new ValidationError(
         'No allocations to apply',
@@ -520,5 +548,93 @@ export async function createNikasiGatePass(
     handleNikasiServiceError(error, logger);
   } finally {
     session.endSession();
+  }
+}
+
+/**
+ * Retrieves all nikasi gate passes for a cold storage (via grading gate passes linked to incoming → farmer storage links).
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Array of nikasi gate passes
+ * @throws ValidationError if cold storage ID format is invalid
+ */
+export async function getNikasiGatePassesByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    // Get all farmer storage link IDs for this cold storage
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all incoming gate pass IDs for these farmer storage links
+    const IncomingGatePass = mongoose.model('IncomingGatePass');
+    const incomingGatePassIds = await IncomingGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all grading gate pass IDs for these incoming gate passes
+    const gradingGatePassIds = await GradingGatePass.find({
+      incomingGatePassId: { $in: incomingGatePassIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all nikasi gate passes that reference any of these grading gate passes
+    const nikasiGatePasses = await NikasiGatePass.find({
+      gradingGatePassIds: { $in: gradingGatePassIds },
+    })
+      .populate({
+        path: 'gradingGatePassIds',
+        populate: {
+          path: 'incomingGatePassId',
+          populate: {
+            path: 'farmerStorageLinkId',
+            populate: [
+              { path: 'farmerId', select: 'name mobileNumber address' },
+              { path: 'linkedById', select: 'name' },
+            ],
+          },
+        },
+      })
+      .sort({ date: -1, gatePassNo: -1 })
+      .lean();
+
+    logger?.info(
+      { coldStorageId, count: nikasiGatePasses.length },
+      'Retrieved nikasi gate passes by cold storage'
+    );
+
+    return nikasiGatePasses;
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving nikasi gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve nikasi gate passes',
+      500,
+      'GET_NIKASI_GATE_PASSES_ERROR'
+    );
   }
 }

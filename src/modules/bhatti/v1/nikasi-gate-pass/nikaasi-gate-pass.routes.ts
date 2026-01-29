@@ -1,5 +1,8 @@
 import { FastifyInstance } from 'fastify';
-import { createNikasiGatePassHandler } from './nikasi-gate-pass.controller';
+import {
+  createNikasiGatePassHandler,
+  getNikasiGatePassesByColdStorageHandler,
+} from './nikasi-gate-pass.controller';
 import { createNikasiGatePassSchema } from './nikasi-gate-pass.schema';
 import { authenticate } from '../../../../utils/auth';
 
@@ -68,5 +71,56 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createNikasiGatePassHandler as never
+  );
+
+  // Get all nikasi gate passes for authenticated user's cold storage
+  fastify.get(
+    '/',
+    {
+      schema: {
+        description:
+          "Get all nikasi gate passes for the authenticated store admin's cold storage",
+        tags: ['Nikasi Gate Pass'],
+        summary: 'Get nikasi gate passes for my cold storage',
+        response: {
+          200: {
+            description: 'List of nikasi gate passes',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getNikasiGatePassesByColdStorageHandler as never
   );
 }
