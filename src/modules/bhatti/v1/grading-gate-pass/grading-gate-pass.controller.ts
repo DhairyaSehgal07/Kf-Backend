@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createGradingGatePass,
   updateGradingGatePass,
+  getGradingGatePassesByColdStorage,
 } from './grading-gate-pass.service';
 import {
   CreateGradingGatePassInput,
@@ -13,6 +14,7 @@ import {
   NotFoundError,
   ConflictError,
   ValidationError,
+  UnauthorizedError,
 } from '../../../../utils/errors';
 import { AuthenticatedRequest } from '../../../../utils/auth';
 
@@ -81,6 +83,90 @@ export async function createGradingGatePassHandler(
     }
 
     // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving grading gate passes for the authenticated user's cold storage
+ */
+export async function getGradingGatePassesByColdStorageHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const gradingGatePasses = await getGradingGatePassesByColdStorage(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: gradingGatePasses,
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getGradingGatePassesByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
     return reply.code(500).send({
       success: false,
       error: {

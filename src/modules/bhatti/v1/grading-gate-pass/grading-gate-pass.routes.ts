@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   createGradingGatePassHandler,
   updateGradingGatePassHandler,
+  getGradingGatePassesByColdStorageHandler,
 } from './grading-gate-pass.controller';
 import {
   createGradingGatePassSchema,
@@ -86,6 +87,57 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createGradingGatePassHandler as never
+  );
+
+  // Get all grading gate passes for authenticated user's cold storage
+  fastify.get(
+    '/',
+    {
+      schema: {
+        description:
+          "Get all grading gate passes for the authenticated store admin's cold storage",
+        tags: ['Grading Gate Pass'],
+        summary: 'Get grading gate passes for my cold storage',
+        response: {
+          200: {
+            description: 'List of grading gate passes',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getGradingGatePassesByColdStorageHandler as never
   );
 
   // Update grading gate pass

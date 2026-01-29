@@ -3,6 +3,10 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
 /* =======================
    ENUMS
 ======================= */
+const oneDecimalFloat = (value: number) => {
+  if (typeof value !== 'number') return value;
+  return Math.round(value * 10) / 10;
+};
 
 export enum BagType {
   JUTE = 'JUTE',
@@ -67,18 +71,21 @@ const OrderDetailSchema = new Schema<IOrderDetail>(
       type: Number,
       required: true,
       min: 0,
+      set: oneDecimalFloat,
     },
 
     initialQuantity: {
       type: Number,
       required: true,
       min: 0,
+      set: oneDecimalFloat,
     },
 
     weightPerBagKg: {
       type: Number,
       required: true,
       min: 0,
+      set: oneDecimalFloat,
     },
   },
   { _id: false }

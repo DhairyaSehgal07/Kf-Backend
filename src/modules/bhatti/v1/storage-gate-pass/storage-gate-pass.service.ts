@@ -399,7 +399,7 @@ function buildStorageOrderDetails(
 
 /**
  * Builds snapshots of each grading gate pass state after allocations are applied.
- * Each snapshot has _id, gatePassNo, and incomingBagSizes (size, currentQuantity, initialQuantity, location).
+ * Each snapshot has _id, gatePassNo, and incomingBagSizes (size, currentQuantity, initialQuantity).
  * currentQuantity = remaining quantity left in that grading pass after this storage pass.
  */
 function buildGradingGatePassSnapshots(
@@ -421,29 +421,20 @@ function buildGradingGatePassSnapshots(
     if (!gp?.orderDetails) continue;
 
     const allocatedBySize = new Map<string, number>();
-    const locationBySize = new Map<string, string>();
     for (const alloc of item.allocations) {
       allocatedBySize.set(
         alloc.size,
         (allocatedBySize.get(alloc.size) ?? 0) + alloc.quantityToAllocate
       );
-      if (!locationBySize.has(alloc.size)) {
-        const loc =
-          [alloc.chamber, alloc.floor, alloc.row].filter(Boolean).join('-') ||
-          '-';
-        locationBySize.set(alloc.size, loc);
-      }
     }
 
     const incomingBagSizes = gp.orderDetails.map((od) => {
       const allocated = allocatedBySize.get(od.size) ?? 0;
       const remaining = Math.max(0, od.currentQuantity - allocated);
-      const location = locationBySize.get(od.size) ?? '-';
       return {
         size: od.size,
         currentQuantity: remaining,
         initialQuantity: od.initialQuantity,
-        location,
       };
     });
 
@@ -829,5 +820,93 @@ export async function updateStorageGatePass(
       throw error;
     }
     handleServiceError(error, logger);
+  }
+}
+
+/**
+ * Retrieves all storage gate passes for a cold storage (via grading gate passes linked to incoming → farmer storage links).
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Array of storage gate passes
+ * @throws ValidationError if cold storage ID format is invalid
+ */
+export async function getStorageGatePassesByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    // Get all farmer storage link IDs for this cold storage
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all incoming gate pass IDs for these farmer storage links
+    const IncomingGatePass = mongoose.model('IncomingGatePass');
+    const incomingGatePassIds = await IncomingGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all grading gate pass IDs for these incoming gate passes
+    const gradingGatePassIds = await GradingGatePass.find({
+      incomingGatePassId: { $in: incomingGatePassIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    // Get all storage gate passes that reference any of these grading gate passes
+    const storageGatePasses = await StorageGatePass.find({
+      gradingGatePassIds: { $in: gradingGatePassIds },
+    })
+      .populate({
+        path: 'gradingGatePassIds',
+        populate: {
+          path: 'incomingGatePassId',
+          populate: {
+            path: 'farmerStorageLinkId',
+            populate: [
+              { path: 'farmerId', select: 'name mobileNumber address' },
+              { path: 'linkedById', select: 'name' },
+            ],
+          },
+        },
+      })
+      .sort({ date: -1, gatePassNo: -1 })
+      .lean();
+
+    logger?.info(
+      { coldStorageId, count: storageGatePasses.length },
+      'Retrieved storage gate passes by cold storage'
+    );
+
+    return storageGatePasses;
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving storage gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate passes',
+      500,
+      'GET_STORAGE_GATE_PASSES_ERROR'
+    );
   }
 }
