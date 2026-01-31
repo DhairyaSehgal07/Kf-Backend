@@ -48,6 +48,7 @@ export interface IOutgoingGatePass extends Document {
   storageGatePassSnapshots?: IOutgoingStorageGatePassSnapshot[];
 
   gatePassNo: number;
+  manualGatePassNumber?: number;
   date: Date;
   variety: string;
 
@@ -175,6 +176,10 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    manualGatePassNumber: {
+      type: Number,
     },
 
     date: {

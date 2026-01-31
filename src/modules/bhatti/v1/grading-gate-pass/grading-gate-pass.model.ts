@@ -36,6 +36,7 @@ export interface IGradingGatePass extends Document {
   gradedById?: Types.ObjectId;
 
   gatePassNo: number;
+  manualGatePassNumber?: number;
   date: Date;
   variety: string;
 
@@ -114,6 +115,10 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    manualGatePassNumber: {
+      type: Number,
     },
 
     date: {

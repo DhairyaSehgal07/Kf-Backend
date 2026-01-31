@@ -26,6 +26,7 @@ export interface INikasiGradingGatePassSnapshot {
 
 export interface INikasiGatePass extends Document {
   gatePassNo: number;
+  manualGatePassNumber?: number;
   gradingGatePassIds: Types.ObjectId[];
   /** Snapshot of each grading gate pass state (remaining qty) when this nikasi pass was created */
   gradingGatePassSnapshots?: INikasiGradingGatePassSnapshot[];
@@ -119,6 +120,10 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    manualGatePassNumber: {
+      type: Number,
     },
 
     gradingGatePassIds: {

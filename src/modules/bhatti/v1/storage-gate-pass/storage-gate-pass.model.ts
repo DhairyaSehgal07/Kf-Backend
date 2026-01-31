@@ -40,6 +40,7 @@ export interface IGradingGatePassSnapshot {
 
 export interface IStorageGatePass extends Document {
   gatePassNo: number;
+  manualGatePassNumber?: number;
   gradingGatePassIds: Types.ObjectId[];
   /** Snapshot of each grading gate pass state (remaining qty) when this storage pass was created */
   gradingGatePassSnapshots?: IGradingGatePassSnapshot[];
@@ -188,6 +189,10 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    manualGatePassNumber: {
+      type: Number,
     },
 
     gradingGatePassIds: {
