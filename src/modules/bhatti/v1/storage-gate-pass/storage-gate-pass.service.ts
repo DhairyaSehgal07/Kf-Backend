@@ -500,7 +500,14 @@ async function createSingleStorageGatePass(
   session: ClientSession,
   logger?: FastifyBaseLogger
 ): Promise<IStorageGatePass> {
-  const { gatePassNo, date, variety, remarks, idempotencyKey } = payload;
+  const {
+    gatePassNo,
+    date,
+    variety,
+    remarks,
+    idempotencyKey,
+    farmerStorageLinkId,
+  } = payload;
 
   if (idempotencyKey) {
     const existing = await StorageGatePass.findOne({ idempotencyKey })
@@ -586,6 +593,7 @@ async function createSingleStorageGatePass(
   );
 
   const storageGatePass = new StorageGatePass({
+    farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
     gatePassNo,
     gradingGatePassIds: validated.map(
       (v) => new Types.ObjectId(v.gradingGatePassId)

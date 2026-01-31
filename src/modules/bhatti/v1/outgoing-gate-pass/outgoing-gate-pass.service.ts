@@ -395,6 +395,7 @@ export async function createOutgoingGatePass(
       defaultStatus,
       remarks,
       idempotencyKey,
+      farmerStorageLinkId,
     } = payload;
 
     if (idempotencyKey) {
@@ -460,6 +461,7 @@ export async function createOutgoingGatePass(
     );
 
     const outgoingGatePass = new OutgoingGatePass({
+      farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
       storageGatePassIds: validated.map(
         (v) => new Types.ObjectId(v.storageGatePassId)
       ),

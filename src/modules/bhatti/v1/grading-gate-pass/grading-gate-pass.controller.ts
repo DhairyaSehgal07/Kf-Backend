@@ -3,11 +3,13 @@ import {
   createGradingGatePass,
   updateGradingGatePass,
   getGradingGatePassesByColdStorage,
+  getGradingGatePassesByFarmerStorageLink,
 } from './grading-gate-pass.service';
 import {
   CreateGradingGatePassInput,
   UpdateGradingGatePassInput,
   UpdateGradingGatePassParams,
+  GetGradingGatePassesByFarmerStorageLinkParams,
 } from './grading-gate-pass.schema';
 import {
   AppError,
@@ -146,6 +148,66 @@ export async function getGradingGatePassesByColdStorageHandler(
         },
       });
     }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving grading gate passes by farmer-storage-link
+ */
+export async function getGradingGatePassesByFarmerStorageLinkHandler(
+  request: FastifyRequest<{
+    Params: GetGradingGatePassesByFarmerStorageLinkParams;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const gradingGatePasses = await getGradingGatePassesByFarmerStorageLink(
+      request.params.farmerStorageLinkId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: gradingGatePasses,
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params },
+      'Error in getGradingGatePassesByFarmerStorageLinkHandler'
+    );
 
     if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({

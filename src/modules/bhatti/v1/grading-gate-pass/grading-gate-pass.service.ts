@@ -44,6 +44,24 @@ export async function createGradingGatePass(
       );
     }
 
+    const incomingFarmerStorageLinkId =
+      (
+        incomingGatePass as { farmerStorageLinkId?: unknown }
+      ).farmerStorageLinkId?.toString?.() ?? '';
+    if (incomingFarmerStorageLinkId !== payload.farmerStorageLinkId) {
+      logger?.warn(
+        {
+          payloadFarmerStorageLinkId: payload.farmerStorageLinkId,
+          incomingFarmerStorageLinkId,
+        },
+        'Farmer storage link does not match incoming gate pass'
+      );
+      throw new ValidationError(
+        'Farmer storage link must match the incoming gate pass',
+        'FARMER_STORAGE_LINK_MISMATCH'
+      );
+    }
+
     // Validate gradedById if provided
     if (payload.gradedById) {
       const StoreAdmin = mongoose.model('StoreAdmin');
@@ -80,6 +98,9 @@ export async function createGradingGatePass(
     // Create the grading gate pass
     const gradingGatePass = await GradingGatePass.create({
       ...payload,
+      farmerStorageLinkId: new mongoose.Types.ObjectId(
+        payload.farmerStorageLinkId
+      ),
       allocationStatus: payload.allocationStatus || 'UNALLOCATED',
     });
 
@@ -459,6 +480,70 @@ export async function getGradingGatePassesByColdStorage(
       'Failed to retrieve grading gate passes',
       500,
       'GET_GRADING_GATE_PASSES_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves all grading gate passes for a given farmer-storage-link
+ * @param farmerStorageLinkId - Farmer storage link ID
+ * @param logger - Optional logger instance
+ * @returns Array of grading gate passes
+ * @throws ValidationError if farmer storage link ID format is invalid
+ */
+export async function getGradingGatePassesByFarmerStorageLink(
+  farmerStorageLinkId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
+      throw new ValidationError(
+        'Invalid farmer storage link ID format',
+        'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+
+    const farmerStorageLinkObjectId = new mongoose.Types.ObjectId(
+      farmerStorageLinkId
+    );
+
+    const gradingGatePasses = await GradingGatePass.find({
+      farmerStorageLinkId: farmerStorageLinkObjectId,
+    })
+      .populate({
+        path: 'incomingGatePassId',
+        populate: {
+          path: 'farmerStorageLinkId',
+          populate: [
+            { path: 'farmerId', select: 'name mobileNumber address' },
+            { path: 'linkedById', select: 'name' },
+          ],
+        },
+      })
+      .populate('gradedById', 'name mobileNumber')
+      .sort({ date: -1, gatePassNo: -1 })
+      .lean();
+
+    logger?.info(
+      { farmerStorageLinkId, count: gradingGatePasses.length },
+      'Retrieved grading gate passes by farmer storage link'
+    );
+
+    return gradingGatePasses;
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, farmerStorageLinkId },
+      'Error retrieving grading gate passes by farmer storage link'
+    );
+
+    throw new AppError(
+      'Failed to retrieve grading gate passes by farmer storage link',
+      500,
+      'GET_GRADING_GATE_PASSES_BY_FARMER_STORAGE_LINK_ERROR'
     );
   }
 }

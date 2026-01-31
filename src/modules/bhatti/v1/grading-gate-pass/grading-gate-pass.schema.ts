@@ -20,6 +20,15 @@ const orderDetailSchema = z.object({
 
 export const createGradingGatePassSchema = z.object({
   body: z.object({
+    farmerStorageLinkId: z
+      .string()
+      .trim()
+      .min(1, 'Farmer storage link ID is required')
+      .refine(
+        (val) => mongoose.Types.ObjectId.isValid(val),
+        'Invalid farmer storage link ID format'
+      ),
+
     incomingGatePassId: z
       .string()
       .trim()
@@ -145,4 +154,21 @@ export type UpdateGradingGatePassInput = z.infer<
 
 export type UpdateGradingGatePassParams = z.infer<
   typeof updateGradingGatePassSchema
+>['params'];
+
+export const getGradingGatePassesByFarmerStorageLinkSchema = z.object({
+  params: z.object({
+    farmerStorageLinkId: z
+      .string()
+      .trim()
+      .min(1, 'Farmer storage link ID is required')
+      .refine(
+        (val) => mongoose.Types.ObjectId.isValid(val),
+        'Invalid farmer storage link ID format'
+      ),
+  }),
+});
+
+export type GetGradingGatePassesByFarmerStorageLinkParams = z.infer<
+  typeof getGradingGatePassesByFarmerStorageLinkSchema
 >['params'];

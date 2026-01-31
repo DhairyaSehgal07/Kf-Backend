@@ -33,6 +33,15 @@ const gradingGatePassAllocationSchema = z.object({
 
 /** Single storage gate pass create input (allocations from grading gate passes) */
 const singleStorageGatePassCreateSchema = z.object({
+  farmerStorageLinkId: z
+    .string()
+    .trim()
+    .min(1, 'Farmer storage link ID is required')
+    .refine(
+      (val) => mongoose.Types.ObjectId.isValid(val),
+      'Invalid farmer storage link ID format'
+    ),
+
   gatePassNo: z.coerce
     .number()
     .int('Gate pass number must be an integer')

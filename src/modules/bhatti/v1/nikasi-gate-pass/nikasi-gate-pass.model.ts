@@ -25,6 +25,7 @@ export interface INikasiGradingGatePassSnapshot {
 }
 
 export interface INikasiGatePass extends Document {
+  farmerStorageLinkId: Types.ObjectId;
   gatePassNo: number;
   manualGatePassNumber?: number;
   gradingGatePassIds: Types.ObjectId[];
@@ -115,6 +116,13 @@ const NikasiGradingGatePassSnapshotSchema =
 
 const NikasiGatePassSchema = new Schema<INikasiGatePass>(
   {
+    farmerStorageLinkId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FarmerStorageLink',
+      required: true,
+      index: true,
+    },
+
     gatePassNo: {
       type: Number,
       required: true,
@@ -200,6 +208,9 @@ NikasiGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
+
+// Farmer storage link lookup
+NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
 // Gate passes by date for reporting
 NikasiGatePassSchema.index({ date: -1 });

@@ -443,6 +443,7 @@ export async function createNikasiGatePass(
       toField,
       remarks,
       idempotencyKey,
+      farmerStorageLinkId,
     } = payload;
 
     if (idempotencyKey) {
@@ -515,6 +516,7 @@ export async function createNikasiGatePass(
     );
 
     const nikasiGatePass = new NikasiGatePass({
+      farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
       gatePassNo,
       gradingGatePassIds: validated.map(
         (v) => new Types.ObjectId(v.gradingGatePassId)

@@ -39,6 +39,7 @@ export interface IGradingGatePassSnapshot {
 }
 
 export interface IStorageGatePass extends Document {
+  farmerStorageLinkId: Types.ObjectId;
   gatePassNo: number;
   manualGatePassNumber?: number;
   gradingGatePassIds: Types.ObjectId[];
@@ -184,6 +185,13 @@ const GradingGatePassSnapshotSchema = new Schema<IGradingGatePassSnapshot>(
 
 const StorageGatePassSchema = new Schema<IStorageGatePass>(
   {
+    farmerStorageLinkId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FarmerStorageLink',
+      required: true,
+      index: true,
+    },
+
     gatePassNo: {
       type: Number,
       required: true,
@@ -263,6 +271,9 @@ StorageGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
+
+// Farmer storage link lookup
+StorageGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
 // Multiple grading → many storage passes (chronological)
 StorageGatePassSchema.index({ gradingGatePassIds: 1, createdAt: -1 });

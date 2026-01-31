@@ -38,6 +38,7 @@ export interface IOutgoingStorageGatePassSnapshot {
 }
 
 export interface IOutgoingGatePass extends Document {
+  farmerStorageLinkId: Types.ObjectId;
   /** Legacy: single storage pass (optional when storageGatePassIds is used) */
   storageGatePassId?: Types.ObjectId;
 
@@ -147,6 +148,13 @@ const OutgoingStorageGatePassSnapshotSchema =
 
 const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
   {
+    farmerStorageLinkId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FarmerStorageLink',
+      required: true,
+      index: true,
+    },
+
     storageGatePassId: {
       type: Schema.Types.ObjectId,
       ref: 'StorageGatePass',
@@ -245,6 +253,9 @@ OutgoingGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
+
+// Farmer storage link lookup
+OutgoingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
 // One storage → many outgoing passes (chronological)
 OutgoingGatePassSchema.index({ storageGatePassId: 1, createdAt: -1 });

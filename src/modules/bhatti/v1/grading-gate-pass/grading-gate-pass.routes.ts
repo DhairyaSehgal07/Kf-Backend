@@ -3,10 +3,12 @@ import {
   createGradingGatePassHandler,
   updateGradingGatePassHandler,
   getGradingGatePassesByColdStorageHandler,
+  getGradingGatePassesByFarmerStorageLinkHandler,
 } from './grading-gate-pass.controller';
 import {
   createGradingGatePassSchema,
   updateGradingGatePassSchema,
+  getGradingGatePassesByFarmerStorageLinkSchema,
 } from './grading-gate-pass.schema';
 import { authenticate } from '../../../../utils/auth';
 
@@ -138,6 +140,58 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getGradingGatePassesByColdStorageHandler as never
+  );
+
+  // Get grading gate passes for a farmer-storage-link (param: farmerStorageLinkId)
+  fastify.get(
+    '/farmer-storage-link/:farmerStorageLinkId',
+    {
+      schema: {
+        ...getGradingGatePassesByFarmerStorageLinkSchema,
+        description:
+          'Get all grading gate passes for a given farmer-storage-link',
+        tags: ['Grading Gate Pass'],
+        summary: 'Get grading gate passes by farmer storage link',
+        response: {
+          200: {
+            description: 'List of grading gate passes for the farmer',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid farmer storage link ID',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getGradingGatePassesByFarmerStorageLinkHandler as never
   );
 
   // Update grading gate pass
