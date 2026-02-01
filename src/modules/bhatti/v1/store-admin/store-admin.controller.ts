@@ -257,10 +257,18 @@ export async function getFarmerStorageLinksByColdStorageHandler(
 }
 
 /**
- * Handler for retrieving daybook (all gate passes) for the authenticated user's cold storage
+ * Handler for retrieving daybook (all gate passes) for the authenticated user's cold storage.
+ * Supports pagination (limit, page), sorting by date (sortOrder), and filtering by gate pass type.
  */
 export async function getDaybookHandler(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      limit?: number;
+      page?: number;
+      sortOrder?: 'asc' | 'desc';
+      gatePassType?: string | string[];
+    };
+  }>,
   reply: FastifyReply
 ) {
   try {
@@ -282,11 +290,55 @@ export async function getDaybookHandler(
       });
     }
 
-    const daybook = await getDaybook(coldStorageId, request.log);
+    const query = request.query;
+    const limit = query.limit ?? 10;
+    const page = query.page ?? 1;
+    const sortOrder = query.sortOrder ?? 'desc';
+    const gatePassType = query.gatePassType;
+    const gatePassTypes =
+      gatePassType == null
+        ? undefined
+        : Array.isArray(gatePassType)
+          ? (gatePassType as (
+              | 'incoming'
+              | 'grading'
+              | 'storage'
+              | 'nikasi'
+              | 'outgoing'
+            )[])
+          : ((gatePassType as string)
+              .split(',')
+              .map((t) => t.trim().toLowerCase())
+              .filter((t) =>
+                [
+                  'incoming',
+                  'grading',
+                  'storage',
+                  'nikasi',
+                  'outgoing',
+                ].includes(t)
+              ) as (
+              | 'incoming'
+              | 'grading'
+              | 'storage'
+              | 'nikasi'
+              | 'outgoing'
+            )[]);
+
+    const result = await getDaybook(
+      coldStorageId,
+      {
+        limit,
+        page,
+        sortOrder,
+        gatePassTypes: gatePassTypes?.length ? gatePassTypes : undefined,
+      },
+      request.log
+    );
 
     return reply.send({
       success: true,
-      data: daybook,
+      data: result,
     });
   } catch (error) {
     request.log.error({ error }, 'Error in getDaybookHandler');

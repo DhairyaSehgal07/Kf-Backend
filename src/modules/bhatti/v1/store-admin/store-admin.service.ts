@@ -516,20 +516,57 @@ export interface DaybookEntry {
   summaries: DaybookEntrySummaries;
 }
 
+/** Gate pass type filter for daybook (entries that have at least one of these pass types) */
+export type DaybookGatePassType =
+  | 'incoming'
+  | 'grading'
+  | 'storage'
+  | 'nikasi'
+  | 'outgoing';
+
+/** Options for daybook retrieval: pagination, sort, and filter by gate pass type */
+export interface GetDaybookOptions {
+  limit?: number;
+  page?: number;
+  sortOrder?: 'asc' | 'desc';
+  gatePassTypes?: DaybookGatePassType[];
+}
+
+/** Pagination metadata returned with daybook */
+export interface DaybookPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 /**
  * Retrieves the daybook using a single aggregation pipeline: for each incoming gate pass,
  * attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries.
  * Each voucher (incoming, grading, storage, nikasi, outgoing) has createdBy populated with store-admin
  * name and mobileNumber. Uses $lookup with pipelines and $setIntersection for efficient joins; allows disk use for large result sets.
+ * Supports pagination (limit, page), sorting by date (sortOrder), and filtering by gate pass type.
  *
  * @param coldStorageId - Cold storage ID
+ * @param options - Optional pagination (limit default 10, page default 1), sortOrder (default 'desc'), gatePassTypes filter
  * @param logger - Optional logger instance
- * @returns Object with daybook array (each entry = one incoming with attached passes and summaries)
+ * @returns Object with daybook array and pagination metadata
  */
 export async function getDaybook(
   coldStorageId: string,
+  options: GetDaybookOptions = {},
   logger?: FastifyBaseLogger
-): Promise<{ daybook: DaybookEntry[] }> {
+): Promise<{
+  daybook: DaybookEntry[];
+  pagination: DaybookPagination;
+}> {
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 100);
+  const page = Math.max(options.page ?? 1, 1);
+  const sortOrder = options.sortOrder ?? 'desc';
+  const gatePassTypes = options.gatePassTypes?.length
+    ? options.gatePassTypes
+    : undefined;
+  const sortDir = sortOrder === 'desc' ? -1 : 1;
   try {
     if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
       throw new ValidationError(
@@ -550,7 +587,10 @@ export async function getDaybook(
 
     if (farmerStorageLinkIds.length === 0) {
       logger?.info({ coldStorageId }, 'Daybook: no farmer-storage links');
-      return { daybook: [] };
+      return {
+        daybook: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      };
     }
 
     // Use model collection names (respects custom collection option in schemas)
@@ -571,7 +611,7 @@ export async function getDaybook(
           farmerStorageLinkId: { $in: farmerStorageLinkIds },
         },
       },
-      { $sort: { date: -1, gatePassNo: -1 } },
+      { $sort: { date: sortDir, gatePassNo: sortDir } },
       // Populate link for farmer (linkedBy not included in response)
       {
         $lookup: {
@@ -861,7 +901,12 @@ export async function getDaybook(
             createdAt: '$createdAt',
             updatedAt: '$updatedAt',
           },
-          farmer: { $arrayElemAt: ['$farmerArr', 0] },
+          farmer: {
+            $mergeObjects: [
+              { $ifNull: [{ $arrayElemAt: ['$farmerArr', 0] }, {}] },
+              { accountNumber: '$linkDoc.accountNumber' },
+            ],
+          },
           gradingPasses: 1,
           storagePasses: 1,
           nikasiPasses: 1,
@@ -871,21 +916,96 @@ export async function getDaybook(
       },
     ];
 
-    const cursor = IncomingGatePass.aggregate(pipeline)
-      .allowDiskUse(true)
-      .cursor({ batchSize: 100 });
+    // Optional filter: only entries that have at least one of the selected gate pass types
+    if (gatePassTypes && gatePassTypes.length > 0) {
+      const typeConditions: mongoose.PipelineStage.Match['$match'][string][] =
+        [];
+      if (gatePassTypes.includes('grading')) {
+        typeConditions.push({
+          $gt: [{ $size: { $ifNull: ['$gradingPasses', []] } }, 0],
+        });
+      }
+      if (gatePassTypes.includes('storage')) {
+        typeConditions.push({
+          $gt: [{ $size: { $ifNull: ['$storagePasses', []] } }, 0],
+        });
+      }
+      if (gatePassTypes.includes('nikasi')) {
+        typeConditions.push({
+          $gt: [{ $size: { $ifNull: ['$nikasiPasses', []] } }, 0],
+        });
+      }
+      if (gatePassTypes.includes('outgoing')) {
+        typeConditions.push({
+          $gt: [{ $size: { $ifNull: ['$outgoingPasses', []] } }, 0],
+        });
+      }
+      if (gatePassTypes.includes('incoming')) {
+        // Every entry has incoming (root doc); include all when filtering by incoming
+        typeConditions.push({ $expr: true });
+      }
+      if (typeConditions.length > 0) {
+        pipeline.push({
+          $match: {
+            $or: typeConditions.map((expr) => ({ $expr: expr })),
+          },
+        });
+      }
 
-    const daybook: DaybookEntry[] = [];
-    for await (const doc of cursor) {
-      daybook.push(doc as unknown as DaybookEntry);
+      // When filtering by type, only include those pass arrays in the response; empty the rest
+      const passProject: Record<string, unknown> = {
+        incoming: '$incoming',
+        farmer: '$farmer',
+        summaries: '$summaries',
+      };
+      passProject['gradingPasses'] = gatePassTypes.includes('grading')
+        ? '$gradingPasses'
+        : [];
+      passProject['storagePasses'] = gatePassTypes.includes('storage')
+        ? '$storagePasses'
+        : [];
+      passProject['nikasiPasses'] = gatePassTypes.includes('nikasi')
+        ? '$nikasiPasses'
+        : [];
+      passProject['outgoingPasses'] = gatePassTypes.includes('outgoing')
+        ? '$outgoingPasses'
+        : [];
+      pipeline.push({ $project: passProject });
     }
 
+    // Sort by date (and gatePassNo) before pagination
+    pipeline.push({
+      $sort: { 'incoming.date': sortDir, 'incoming.gatePassNo': sortDir },
+    });
+
+    // Pagination: total count + paginated items in one pass
+    pipeline.push({
+      $facet: {
+        totalCount: [{ $count: 'value' }],
+        items: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+      },
+    });
+
+    const result =
+      await IncomingGatePass.aggregate(pipeline).allowDiskUse(true);
+
+    const totalCount =
+      result[0]?.totalCount?.[0]?.value != null
+        ? result[0].totalCount[0].value
+        : 0;
+    const daybook = (result[0]?.items ?? []) as DaybookEntry[];
+
+    const totalPages = Math.ceil(totalCount / limit);
+
     logger?.info(
-      { coldStorageId, entryCount: daybook.length },
+      { coldStorageId, entryCount: daybook.length, totalCount, page, limit },
       'Daybook retrieved'
     );
 
-    return { daybook };
+    return {
+      daybook,
+      pagination: { page, limit, total: totalCount, totalPages },
+    };
   } catch (error) {
     if (error instanceof ValidationError) {
       throw error;

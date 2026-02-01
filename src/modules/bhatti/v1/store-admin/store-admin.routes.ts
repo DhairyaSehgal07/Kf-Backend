@@ -23,6 +23,7 @@ import {
   quickRegisterFarmerSchema,
   updateFarmerStorageLinkSchema,
   getVoucherNumberQuerySchema,
+  getDaybookQuerySchema,
 } from './store-admin.schema';
 import { authenticate, authorize } from '../../../../utils/auth';
 import { Role } from './store-admin.model';
@@ -230,14 +231,35 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
     '/daybook',
     {
       schema: {
+        ...getDaybookQuerySchema,
         description:
-          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries (totalBagsIncoming, totalBagsGraded, totalBagsStored, totalBagsNikasi, totalBagsOutgoing)',
+          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries. Supports pagination (limit default 10, page), sorting by date (sortOrder: asc|desc), and filtering by gate pass type (gatePassType: incoming, grading, storage, nikasi, outgoing; comma-separated or repeated).',
         tags: ['Store Admin'],
         summary: 'Get daybook',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 10, max 100)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+            sortOrder: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort by date (default desc)',
+            },
+            gatePassType: {
+              type: 'string',
+              description:
+                'Filter entries that have at least one of these pass types: incoming, grading, storage, nikasi, outgoing (comma-separated or repeated)',
+            },
+          },
+        },
         response: {
           200: {
             description:
-              'Daybook: array of entries (one per incoming) with attached passes and summaries',
+              'Daybook: array of entries (one per incoming) with attached passes, summaries, and pagination',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -285,6 +307,15 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                           },
                         },
                       },
+                    },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
                     },
                   },
                 },

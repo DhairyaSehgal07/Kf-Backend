@@ -308,3 +308,55 @@ export const getVoucherNumberQuerySchema = z.object({
 export type GetVoucherNumberQuery = z.infer<
   typeof getVoucherNumberQuerySchema
 >['querystring'];
+
+/** Allowed gate pass types for daybook filter */
+export const DAYBOOK_GATE_PASS_TYPES = [
+  'incoming',
+  'grading',
+  'storage',
+  'nikasi',
+  'outgoing',
+] as const;
+
+export const getDaybookQuerySchema = z.object({
+  querystring: z.object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, 'Limit must be at least 1')
+      .max(100, 'Limit must not exceed 100')
+      .optional()
+      .default(10),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1, 'Page must be at least 1')
+      .optional()
+      .default(1),
+    sortOrder: z
+      .enum(['asc', 'desc'], {
+        message: 'sortOrder must be "asc" or "desc"',
+      })
+      .optional()
+      .default('desc'),
+    gatePassType: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .transform((s) => {
+        if (s == null) return undefined;
+        const arr = Array.isArray(s) ? s : [s];
+        const types = arr
+          .flatMap((x) => x.split(',').map((t) => t.trim().toLowerCase()))
+          .filter((t) =>
+            DAYBOOK_GATE_PASS_TYPES.includes(
+              t as (typeof DAYBOOK_GATE_PASS_TYPES)[number]
+            )
+          ) as (typeof DAYBOOK_GATE_PASS_TYPES)[number][];
+        return types.length ? types : undefined;
+      }),
+  }),
+});
+
+export type GetDaybookQuery = z.infer<
+  typeof getDaybookQuerySchema
+>['querystring'];
