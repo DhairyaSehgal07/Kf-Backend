@@ -4,5 +4,6 @@ services:
   - type: web
     name: bhatti-backend
     runtime: node
-    buildCommand: pnpm install && pnpm run build
+    # Must run build so tsc produces dist/server.js (Render default only runs install).
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm start
