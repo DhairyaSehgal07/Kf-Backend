@@ -1,15 +1,15 @@
-import { IncomingGatePass } from './incoming-gate-pass.model';
-import { IncomingGatePassAudit } from './incoming-gate-pass-audit.model';
+import { IncomingGatePass } from './incoming-gate-pass.model.js';
+import { IncomingGatePassAudit } from './incoming-gate-pass-audit.model.js';
 import {
   CreateIncomingGatePassInput,
   UpdateIncomingGatePassInput,
-} from './incoming-gate-pass.schema';
+} from './incoming-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
+} from '../../../../utils/errors.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 

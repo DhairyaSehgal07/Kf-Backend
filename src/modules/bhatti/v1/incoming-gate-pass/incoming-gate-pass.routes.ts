@@ -3,12 +3,12 @@ import {
   createIncomingGatePassHandler,
   updateIncomingGatePassHandler,
   getIncomingGatePassesByColdStorageHandler,
-} from './incoming-gate-pass.controller';
+} from './incoming-gate-pass.controller.js';
 import {
   createIncomingGatePassSchema,
   updateIncomingGatePassSchema,
-} from './incoming-gate-pass.schema';
-import { authenticate } from '../../../../utils/auth';
+} from './incoming-gate-pass.schema.js';
+import { authenticate } from '../../../../utils/auth.js';
 
 /**
  * Register incoming gate pass routes

@@ -14,7 +14,7 @@ import {
   updateFarmerStorageLink,
   getNextVoucherNumber,
   type VoucherType,
-} from './store-admin.service';
+} from './store-admin.service.js';
 import {
   CreateStoreAdminInput,
   GetStoreAdminByIdParams,
@@ -27,15 +27,15 @@ import {
   UpdateFarmerStorageLinkInput,
   UpdateFarmerStorageLinkParams,
   GetVoucherNumberQuery,
-} from './store-admin.schema';
+} from './store-admin.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
   UnauthorizedError,
-} from '../../../../utils/errors';
-import type { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import type { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a new store admin

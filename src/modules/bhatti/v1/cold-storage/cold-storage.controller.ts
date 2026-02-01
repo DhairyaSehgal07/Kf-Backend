@@ -3,18 +3,18 @@ import {
   createColdStorage,
   getColdStorages,
   getColdStorageById,
-} from './cold-storage.service';
+} from './cold-storage.service.js';
 import {
   CreateColdStorageInput,
   GetColdStoragesQuery,
   GetColdStorageByIdParams,
-} from './cold-storage.schema';
+} from './cold-storage.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
-} from '../../../../utils/errors';
+} from '../../../../utils/errors.js';
 
 /**
  * Handler for creating a new cold storage

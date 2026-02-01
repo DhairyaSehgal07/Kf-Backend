@@ -3,12 +3,12 @@ import {
   createStorageGatePassHandler,
   updateStorageGatePassHandler,
   getStorageGatePassesByColdStorageHandler,
-} from './storage-gate-pass.controller';
+} from './storage-gate-pass.controller.js';
 import {
   createStorageGatePassSchema,
   updateStorageGatePassSchema,
-} from './storage-gate-pass.schema';
-import { authenticate } from '../../../../utils/auth';
+} from './storage-gate-pass.schema.js';
+import { authenticate } from '../../../../utils/auth.js';
 
 /**
  * Register storage gate pass routes

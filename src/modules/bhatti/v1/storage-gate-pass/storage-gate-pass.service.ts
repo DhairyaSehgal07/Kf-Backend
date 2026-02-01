@@ -1,26 +1,26 @@
 import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
-import { StorageGatePass } from './storage-gate-pass.model';
-import { StorageGatePassAudit } from './storage-gate-pass-audit.model';
-import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
-import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model';
+import { StorageGatePass } from './storage-gate-pass.model.js';
+import { StorageGatePassAudit } from './storage-gate-pass-audit.model.js';
+import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   CreateStorageGatePassInput,
   CreateStorageGatePassBody,
   UpdateStorageGatePassInput,
-} from './storage-gate-pass.schema';
+} from './storage-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
-import type { IGradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
+} from '../../../../utils/errors.js';
+import type { IGradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   IStorageGatePass,
   IGradingGatePassSnapshot,
-} from './storage-gate-pass.model';
+} from './storage-gate-pass.model.js';
 
 /* =======================
    TYPES (internal)

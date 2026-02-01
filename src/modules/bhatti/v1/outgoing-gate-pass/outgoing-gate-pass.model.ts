@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types, Model } from 'mongoose';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model';
+import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 
 /* =======================
    ENUMS

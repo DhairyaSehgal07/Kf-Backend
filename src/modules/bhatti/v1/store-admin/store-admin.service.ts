@@ -1,29 +1,29 @@
-import { StoreAdmin, Role } from './store-admin.model';
+import { StoreAdmin, Role } from './store-admin.model.js';
 import {
   CreateStoreAdminInput,
   LoginStoreAdminInput,
   QuickRegisterFarmerInput,
   UpdateFarmerStorageLinkInput,
-} from './store-admin.schema';
+} from './store-admin.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
   UnauthorizedError,
-} from '../../../../utils/errors';
+} from '../../../../utils/errors.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
-import { RolePermission } from '../role-permission/role-permission.model';
-import type { ResourcePermission } from '../role-permission/role-permission.model';
+import { RolePermission } from '../role-permission/role-permission.model.js';
+import type { ResourcePermission } from '../role-permission/role-permission.model.js';
 import bcrypt from 'bcryptjs';
-import { Farmer } from '../farmer/farmer.model';
-import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model';
-import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model';
-import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
-import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model';
-import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model';
-import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model';
+import { Farmer } from '../farmer/farmer.model.js';
+import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
+import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model.js';
+import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
+import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
+import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
 
 /**
  * Get all available resources and actions for Admin permissions

@@ -1,21 +1,21 @@
 import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
-import { OutgoingGatePass } from './outgoing-gate-pass.model';
-import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model';
-import type { CreateOutgoingGatePassBody } from './outgoing-gate-pass.schema';
+import { OutgoingGatePass } from './outgoing-gate-pass.model.js';
+import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
+import type { CreateOutgoingGatePassBody } from './outgoing-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
-import type { IStorageGatePass } from '../storage-gate-pass/storage-gate-pass.model';
+} from '../../../../utils/errors.js';
+import type { IStorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import type {
   IOutgoingGatePass,
   IOutgoingStorageGatePassSnapshot,
-} from './outgoing-gate-pass.model';
-import { MoistureStatus } from './outgoing-gate-pass.model';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model';
+} from './outgoing-gate-pass.model.js';
+import { MoistureStatus } from './outgoing-gate-pass.model.js';
+import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 
 /* =======================
    TYPES (internal)

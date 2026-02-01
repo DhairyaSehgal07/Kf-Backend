@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { BagType, AllocationStatus } from './grading-gate-pass.model';
+import { BagType, AllocationStatus } from './grading-gate-pass.model.js';
 
 const orderDetailSchema = z.object({
   size: z.string().trim().min(1, 'Size is required'),

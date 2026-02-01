@@ -2,9 +2,9 @@ import { FastifyInstance } from 'fastify';
 import {
   createNikasiGatePassHandler,
   getNikasiGatePassesByColdStorageHandler,
-} from './nikasi-gate-pass.controller';
-import { createNikasiGatePassSchema } from './nikasi-gate-pass.schema';
-import { authenticate } from '../../../../utils/auth';
+} from './nikasi-gate-pass.controller.js';
+import { createNikasiGatePassSchema } from './nikasi-gate-pass.schema.js';
+import { authenticate } from '../../../../utils/auth.js';
 
 /**
  * Register nikasi gate pass routes

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model';
+import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 
 /* =======================
    Allocation-based Create (from grading gate passes)

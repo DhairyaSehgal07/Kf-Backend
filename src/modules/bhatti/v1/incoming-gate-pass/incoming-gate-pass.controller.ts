@@ -3,20 +3,20 @@ import {
   createIncomingGatePass,
   updateIncomingGatePass,
   getIncomingGatePassesByColdStorage,
-} from './incoming-gate-pass.service';
+} from './incoming-gate-pass.service.js';
 import {
   CreateIncomingGatePassInput,
   UpdateIncomingGatePassInput,
   UpdateIncomingGatePassParams,
-} from './incoming-gate-pass.schema';
+} from './incoming-gate-pass.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
   UnauthorizedError,
-} from '../../../../utils/errors';
-import { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a new incoming gate pass

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { MoistureStatus } from './outgoing-gate-pass.model';
+import { MoistureStatus } from './outgoing-gate-pass.model.js';
 
 /* =======================
    Create (from storage gate passes)

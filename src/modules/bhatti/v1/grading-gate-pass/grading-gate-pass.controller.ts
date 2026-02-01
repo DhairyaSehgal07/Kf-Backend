@@ -4,21 +4,21 @@ import {
   updateGradingGatePass,
   getGradingGatePassesByColdStorage,
   getGradingGatePassesByFarmerStorageLink,
-} from './grading-gate-pass.service';
+} from './grading-gate-pass.service.js';
 import {
   CreateGradingGatePassInput,
   UpdateGradingGatePassInput,
   UpdateGradingGatePassParams,
   GetGradingGatePassesByFarmerStorageLinkParams,
-} from './grading-gate-pass.schema';
+} from './grading-gate-pass.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
   UnauthorizedError,
-} from '../../../../utils/errors';
-import { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a new grading gate pass

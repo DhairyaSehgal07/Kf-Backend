@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import { Role } from '../store-admin/store-admin.model';
+import { Role } from '../store-admin/store-admin.model.js';
 
 /* -------------------------------------------------
    ResourcePermission type

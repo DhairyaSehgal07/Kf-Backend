@@ -1,20 +1,20 @@
 import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
-import { NikasiGatePass } from './nikasi-gate-pass.model';
-import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
-import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model';
-import type { CreateNikasiGatePassBody } from './nikasi-gate-pass.schema';
+import { NikasiGatePass } from './nikasi-gate-pass.model.js';
+import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model.js';
+import type { CreateNikasiGatePassBody } from './nikasi-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
-import type { IGradingGatePass } from '../grading-gate-pass/grading-gate-pass.model';
+} from '../../../../utils/errors.js';
+import type { IGradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   INikasiGatePass,
   INikasiGradingGatePassSnapshot,
-} from './nikasi-gate-pass.model';
+} from './nikasi-gate-pass.model.js';
 
 /* =======================
    TYPES (internal)

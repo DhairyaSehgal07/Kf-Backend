@@ -3,20 +3,20 @@ import {
   createStorageGatePass,
   updateStorageGatePass,
   getStorageGatePassesByColdStorage,
-} from './storage-gate-pass.service';
+} from './storage-gate-pass.service.js';
 import {
   CreateStorageGatePassBody,
   UpdateStorageGatePassInput,
   UpdateStorageGatePassParams,
-} from './storage-gate-pass.schema';
+} from './storage-gate-pass.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
   UnauthorizedError,
-} from '../../../../utils/errors';
-import { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a single storage gate pass from grading gate pass allocations.

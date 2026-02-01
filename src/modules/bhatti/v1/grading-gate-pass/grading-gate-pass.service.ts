@@ -1,15 +1,15 @@
-import { GradingGatePass } from './grading-gate-pass.model';
-import { GradingGatePassAudit } from './grading-gate-pass-audit.model';
+import { GradingGatePass } from './grading-gate-pass.model.js';
+import { GradingGatePassAudit } from './grading-gate-pass-audit.model.js';
 import {
   CreateGradingGatePassInput,
   UpdateGradingGatePassInput,
-} from './grading-gate-pass.schema';
+} from './grading-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
+} from '../../../../utils/errors.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 

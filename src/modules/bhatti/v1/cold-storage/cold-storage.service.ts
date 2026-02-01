@@ -1,14 +1,14 @@
-import { ColdStorage } from './cold-storage.model';
+import { ColdStorage } from './cold-storage.model.js';
 import {
   CreateColdStorageInput,
   GetColdStoragesQuery,
-} from './cold-storage.schema';
+} from './cold-storage.schema.js';
 import {
   ConflictError,
   NotFoundError,
   ValidationError,
   AppError,
-} from '../../../../utils/errors';
+} from '../../../../utils/errors.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { createOutgoingGatePassHandler } from './outgoing-gate-pass.controller';
-import { createOutgoingGatePassSchema } from './outgoing-gate-pass.schema';
-import { authenticate } from '../../../../utils/auth';
+import { createOutgoingGatePassHandler } from './outgoing-gate-pass.controller.js';
+import { createOutgoingGatePassSchema } from './outgoing-gate-pass.schema.js';
+import { authenticate } from '../../../../utils/auth.js';
 
 /**
  * Register outgoing gate pass routes

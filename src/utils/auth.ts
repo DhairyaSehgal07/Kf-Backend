@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { FastifyRequest } from 'fastify';
-import { UnauthorizedError } from './errors';
-import { ForbiddenError } from './errors';
-import { Role } from '../modules/bhatti/v1/store-admin/store-admin.model';
+import { UnauthorizedError } from './errors.js';
+import { ForbiddenError } from './errors.js';
+import { Role } from '../modules/bhatti/v1/store-admin/store-admin.model.js';
 
 /**
  * JWT Payload interface

@@ -4,13 +4,13 @@ import {
   updateGradingGatePassHandler,
   getGradingGatePassesByColdStorageHandler,
   getGradingGatePassesByFarmerStorageLinkHandler,
-} from './grading-gate-pass.controller';
+} from './grading-gate-pass.controller.js';
 import {
   createGradingGatePassSchema,
   updateGradingGatePassSchema,
   getGradingGatePassesByFarmerStorageLinkSchema,
-} from './grading-gate-pass.schema';
-import { authenticate } from '../../../../utils/auth';
+} from './grading-gate-pass.schema.js';
+import { authenticate } from '../../../../utils/auth.js';
 
 /**
  * Register grading gate pass routes

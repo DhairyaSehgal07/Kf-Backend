@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Role } from './store-admin.model';
+import { Role } from './store-admin.model.js';
 import mongoose from 'mongoose';
 
 export const createStoreAdminSchema = z.object({

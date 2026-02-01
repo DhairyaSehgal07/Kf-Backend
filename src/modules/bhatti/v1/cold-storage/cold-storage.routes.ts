@@ -3,12 +3,12 @@ import {
   createColdStorageHandler,
   getColdStoragesHandler,
   getColdStorageByIdHandler,
-} from './cold-storage.controller';
+} from './cold-storage.controller.js';
 import {
   createColdStorageSchema,
   getColdStoragesQuerySchema,
   getColdStorageByIdParamsSchema,
-} from './cold-storage.schema';
+} from './cold-storage.schema.js';
 
 /**
  * Register cold storage routes

@@ -13,7 +13,7 @@ import {
   getDaybookHandler,
   getVouchersByFarmerStorageLinkHandler,
   getNextVoucherNumberHandler,
-} from './store-admin.controller';
+} from './store-admin.controller.js';
 import {
   createStoreAdminSchema,
   getStoreAdminByIdParamsSchema,
@@ -26,9 +26,9 @@ import {
   getVoucherNumberQuerySchema,
   getDaybookQuerySchema,
   getVouchersByFarmerStorageLinkParamsSchema,
-} from './store-admin.schema';
-import { authenticate, authorize } from '../../../../utils/auth';
-import { Role } from './store-admin.model';
+} from './store-admin.schema.js';
+import { authenticate, authorize } from '../../../../utils/auth.js';
+import { Role } from './store-admin.model.js';
 
 /**
  * Register store admin routes

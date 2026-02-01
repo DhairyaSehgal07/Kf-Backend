@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Plan } from './cold-storage.model';
+import { Plan } from './cold-storage.model.js';
 import mongoose from 'mongoose';
 
 export const createColdStorageSchema = z.object({

@@ -2,16 +2,16 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createNikasiGatePass,
   getNikasiGatePassesByColdStorage,
-} from './nikasi-gate-pass.service';
-import { CreateNikasiGatePassBody } from './nikasi-gate-pass.schema';
+} from './nikasi-gate-pass.service.js';
+import { CreateNikasiGatePassBody } from './nikasi-gate-pass.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
   UnauthorizedError,
-} from '../../../../utils/errors';
-import { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a single nikasi gate pass from grading gate pass allocations.

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { GatePassStatus } from './incoming-gate-pass.model';
+import { GatePassStatus } from './incoming-gate-pass.model.js';
 
 const weightSlipSchema = z.object({
   slipNumber: z.string().trim().optional(),

@@ -1,13 +1,13 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { createOutgoingGatePass } from './outgoing-gate-pass.service';
-import { CreateOutgoingGatePassBody } from './outgoing-gate-pass.schema';
+import { createOutgoingGatePass } from './outgoing-gate-pass.service.js';
+import { CreateOutgoingGatePassBody } from './outgoing-gate-pass.schema.js';
 import {
   AppError,
   NotFoundError,
   ConflictError,
   ValidationError,
-} from '../../../../utils/errors';
-import { AuthenticatedRequest } from '../../../../utils/auth';
+} from '../../../../utils/errors.js';
+import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a single outgoing gate pass from storage gate pass allocations.
