@@ -119,7 +119,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Global error handler
-  fastify.setErrorHandler((error: Error, request, reply) => {
+  fastify.setErrorHandler((error: Error, _request, reply) => {
     // Handle our custom AppError (UnauthorizedError, NotFoundError, etc.) – ensure code and message are always sent
     if (error instanceof AppError) {
       fastify.log.error(
