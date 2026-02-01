@@ -4,6 +4,7 @@ services:
   - type: web
     name: bhatti-backend
     runtime: node
-    # Must run build so tsc produces dist/server.js (Render default only runs install).
+    # Use repo root so build creates dist/ and start finds dist/server.js (not src/dist).
+    rootDir: .
     buildCommand: pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm start
