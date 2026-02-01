@@ -164,8 +164,7 @@ IncomingGatePassSchema.index({ date: -1 });
 IncomingGatePassSchema.index({ status: 1, date: -1 });
 
 // Gate pass number lookup (already indexed via unique)
-// createdBy lookup
-IncomingGatePassSchema.index({ createdBy: 1 });
+// createdBy is indexed via field-level index: true
 
 /* =======================
    MODEL

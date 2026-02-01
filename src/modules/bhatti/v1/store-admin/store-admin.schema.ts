@@ -360,3 +360,21 @@ export const getDaybookQuerySchema = z.object({
 export type GetDaybookQuery = z.infer<
   typeof getDaybookQuerySchema
 >['querystring'];
+
+/** Params for vouchers-by-farmer-storage-link route */
+export const getVouchersByFarmerStorageLinkParamsSchema = z.object({
+  params: z.object({
+    farmerStorageLinkId: z
+      .string()
+      .trim()
+      .min(1, 'Farmer storage link ID is required')
+      .refine(
+        (val) => mongoose.Types.ObjectId.isValid(val),
+        'Invalid farmer storage link ID format'
+      ),
+  }),
+});
+
+export type GetVouchersByFarmerStorageLinkParams = z.infer<
+  typeof getVouchersByFarmerStorageLinkParamsSchema
+>['params'];

@@ -5,6 +5,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { config } from 'dotenv';
+import { AppError } from './utils/errors.js';
 import { coldStorageRoutes } from './modules/bhatti/v1/cold-storage/cold-storage.routes.js';
 import { storeAdminRoutes } from './modules/bhatti/v1/store-admin/store-admin.routes.js';
 import { incomingGatePassRoutes } from './modules/bhatti/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
@@ -119,28 +120,46 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Global error handler
   fastify.setErrorHandler((error: Error, request, reply) => {
-    // Handle known error types
-    if ('statusCode' in error && 'code' in error) {
-      const appError = error as {
-        statusCode: number;
-        code: string;
-        message: string;
-      };
+    // Handle our custom AppError (UnauthorizedError, NotFoundError, etc.) – ensure code and message are always sent
+    if (error instanceof AppError) {
       fastify.log.error(
-        { error, statusCode: appError.statusCode, code: appError.code },
+        { error, statusCode: error.statusCode, code: error.code },
         'Application error'
       );
-      return reply.code(appError.statusCode).send({
+      return reply.code(error.statusCode).send({
         success: false,
         error: {
-          code: appError.code,
-          message: appError.message,
+          code: error.code,
+          message: error.message ?? 'An error occurred',
         },
       });
     }
 
+    // Handle other errors that have statusCode/code (e.g. from plugins) – use fallbacks so we never send empty error {}
+    if (
+      'statusCode' in error &&
+      typeof (error as { statusCode?: number }).statusCode === 'number'
+    ) {
+      const err = error as {
+        statusCode: number;
+        code?: string;
+        message?: string;
+      };
+      const statusCode = err.statusCode;
+      const code = typeof err.code === 'string' ? err.code : 'ERROR';
+      const message =
+        typeof err.message === 'string' && err.message
+          ? err.message
+          : 'An error occurred';
+      fastify.log.error({ error, statusCode, code }, 'Application error');
+      return reply.code(statusCode).send({
+        success: false,
+        error: { code, message },
+      });
+    }
+
     // Handle JWT errors
-    if (error.message.includes('jwt') || error.message.includes('token')) {
+    if (error.message?.includes('jwt') || error.message?.includes('token')) {
       fastify.log.warn({ error }, 'JWT authentication error');
       return reply.code(401).send({
         success: false,
@@ -153,8 +172,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
     // Handle validation errors
     if (
-      error.message.includes('validation') ||
-      error.message.includes('schema')
+      error.message?.includes('validation') ||
+      error.message?.includes('schema')
     ) {
       fastify.log.warn({ error }, 'Validation error');
       return reply.code(400).send({
@@ -173,7 +192,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       error: {
         code: 'INTERNAL_SERVER_ERROR',
         message:
-          process.env.NODE_ENV === 'development'
+          process.env.NODE_ENV === 'development' && error.message
             ? error.message
             : 'An unexpected error occurred',
       },

@@ -528,6 +528,8 @@ export type DaybookGatePassType =
 export interface GetDaybookOptions {
   limit?: number;
   page?: number;
+  /** When true, return all entries (no pagination cap) – used e.g. for vouchers by farmer-storage-link */
+  unbounded?: boolean;
   sortOrder?: 'asc' | 'desc';
   gatePassTypes?: DaybookGatePassType[];
 }
@@ -550,18 +552,23 @@ export interface DaybookPagination {
  * @param coldStorageId - Cold storage ID
  * @param options - Optional pagination (limit default 10, page default 1), sortOrder (default 'desc'), gatePassTypes filter
  * @param logger - Optional logger instance
+ * @param overrideFarmerStorageLinkIds - Optional list of link IDs to restrict to (e.g. for vouchers by link)
  * @returns Object with daybook array and pagination metadata
  */
 export async function getDaybook(
   coldStorageId: string,
   options: GetDaybookOptions = {},
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  overrideFarmerStorageLinkIds?: mongoose.Types.ObjectId[]
 ): Promise<{
   daybook: DaybookEntry[];
   pagination: DaybookPagination;
 }> {
-  const limit = Math.min(Math.max(options.limit ?? 10, 1), 100);
-  const page = Math.max(options.page ?? 1, 1);
+  const unbounded = options.unbounded === true;
+  const limit = unbounded
+    ? 10000
+    : Math.min(Math.max(options.limit ?? 10, 1), 100);
+  const page = unbounded ? 1 : Math.max(options.page ?? 1, 1);
   const sortOrder = options.sortOrder ?? 'desc';
   const gatePassTypes = options.gatePassTypes?.length
     ? options.gatePassTypes
@@ -577,20 +584,28 @@ export async function getDaybook(
 
     const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
 
-    // Single indexed query: get link IDs for this cold storage (uses coldStorageId index)
-    const farmerStorageLinkIds = await FarmerStorageLink.find(
-      { coldStorageId: coldStorageObjectId },
-      { _id: 1 }
-    )
-      .lean()
-      .then((links) => links.map((l) => l._id));
+    let farmerStorageLinkIds: mongoose.Types.ObjectId[];
+    if (
+      overrideFarmerStorageLinkIds != null &&
+      overrideFarmerStorageLinkIds.length > 0
+    ) {
+      farmerStorageLinkIds = overrideFarmerStorageLinkIds;
+    } else {
+      // Single indexed query: get link IDs for this cold storage (uses coldStorageId index)
+      farmerStorageLinkIds = await FarmerStorageLink.find(
+        { coldStorageId: coldStorageObjectId },
+        { _id: 1 }
+      )
+        .lean()
+        .then((links) => links.map((l) => l._id));
 
-    if (farmerStorageLinkIds.length === 0) {
-      logger?.info({ coldStorageId }, 'Daybook: no farmer-storage links');
-      return {
-        daybook: [],
-        pagination: { page, limit, total: 0, totalPages: 0 },
-      };
+      if (farmerStorageLinkIds.length === 0) {
+        logger?.info({ coldStorageId }, 'Daybook: no farmer-storage links');
+        return {
+          daybook: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        };
+      }
     }
 
     // Use model collection names (respects custom collection option in schemas)
@@ -855,7 +870,7 @@ export async function getDaybook(
                     '$$value',
                     {
                       $sum: {
-                        $ifNull: ['$$this.orderDetails.quantityIssued', []],
+                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
                       },
                     },
                   ],
@@ -871,7 +886,7 @@ export async function getDaybook(
                     '$$value',
                     {
                       $sum: {
-                        $ifNull: ['$$this.orderDetails.quantityIssued', []],
+                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
                       },
                     },
                   ],
@@ -1014,6 +1029,85 @@ export async function getDaybook(
     logger?.error({ error, coldStorageId }, 'Error retrieving daybook');
 
     throw new AppError('Failed to retrieve daybook', 500, 'GET_DAYBOOK_ERROR');
+  }
+}
+
+/**
+ * Retrieves all vouchers (daybook-style entries) for a single farmer-storage-link.
+ * Same response shape and summary calculations as daybook; link must belong to the given cold storage.
+ *
+ * @param farmerStorageLinkId - Farmer storage link ID (from params)
+ * @param coldStorageId - Cold storage ID (for auth: link must belong to this cold storage)
+ * @param options - Same as getDaybook: pagination, sortOrder, gatePassTypes
+ * @param logger - Optional logger instance
+ * @returns Object with daybook array and pagination metadata
+ */
+export async function getVouchersByFarmerStorageLink(
+  farmerStorageLinkId: string,
+  coldStorageId: string,
+  options: GetDaybookOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{
+  daybook: DaybookEntry[];
+  pagination: DaybookPagination;
+}> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
+      throw new ValidationError(
+        'Invalid farmer storage link ID format',
+        'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const linkObjectId = new mongoose.Types.ObjectId(farmerStorageLinkId);
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    const link = await FarmerStorageLink.findById(linkObjectId)
+      .select('coldStorageId _id')
+      .lean();
+
+    if (!link) {
+      throw new NotFoundError(
+        'Farmer storage link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    const linkColdStorageId =
+      link.coldStorageId instanceof mongoose.Types.ObjectId
+        ? link.coldStorageId
+        : (link.coldStorageId as { _id: mongoose.Types.ObjectId })?._id;
+
+    if (
+      linkColdStorageId == null ||
+      !linkColdStorageId.equals(coldStorageObjectId)
+    ) {
+      throw new NotFoundError(
+        'Farmer storage link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    return getDaybook(coldStorageId, options, logger, [linkObjectId]);
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+    logger?.error(
+      { error, farmerStorageLinkId, coldStorageId },
+      'Error retrieving vouchers by farmer storage link'
+    );
+    throw new AppError(
+      'Failed to retrieve vouchers for farmer storage link',
+      500,
+      'GET_VOUCHERS_BY_LINK_ERROR'
+    );
   }
 }
 

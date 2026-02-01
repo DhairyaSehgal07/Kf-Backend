@@ -217,7 +217,7 @@ NikasiGatePassSchema.index(
 );
 
 // Created by user lookup
-NikasiGatePassSchema.index({ createdBy: 1 });
+// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

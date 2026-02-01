@@ -262,7 +262,7 @@ OutgoingGatePassSchema.index(
 );
 
 // Created by user lookup
-OutgoingGatePassSchema.index({ createdBy: 1 });
+// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 OutgoingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

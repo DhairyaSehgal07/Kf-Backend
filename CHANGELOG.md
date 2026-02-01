@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-01
+
+### Added
+
+- **Vouchers by Farmer Storage Link**
+  - Added GET `/api/bhatti/v1/store-admin/farmer-storage-links/:farmerStorageLinkId/vouchers` to fetch all vouchers (daybook-style entries) for a single farmer-storage-link
+  - Returns incoming, grading, storage, nikasi, and outgoing gate passes with summaries; link must belong to the authenticated store admin's cold storage
+  - Supports `sortOrder` (asc/desc) and `gatePassType` filter; returns all orders (no pagination)
+  - Includes authentication, rate limiting, validation schema, and error handling
+
+### Changed
+
+- **Global Error Handler (app.ts)**
+  - Use `AppError` instanceof check for custom errors so `code` and `message` are always sent
+  - Handle plugin errors with fallbacks so response never sends empty `error: {}`
+  - Safer access to `error.message` with optional chaining
+
+- **Store Admin Daybook**
+  - `getDaybook` now accepts optional `overrideFarmerStorageLinkIds` and `unbounded` option for vouchers-by-link
+  - Daybook summary uses `initialQuantity` instead of `quantityIssued` for bag totals
+
+- **Gate Pass Models (Indexes)**
+  - Removed redundant compound index `{ createdBy: 1 }` from grading, incoming, nikasi, outgoing, and storage gate pass schemas (rely on field-level index)
+
 ## [1.4.0] - 2026-01-30
 
 ### Added

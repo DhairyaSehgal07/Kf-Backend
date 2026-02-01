@@ -11,6 +11,7 @@ import {
   updateFarmerStorageLinkHandler,
   getFarmerStorageLinksByColdStorageHandler,
   getDaybookHandler,
+  getVouchersByFarmerStorageLinkHandler,
   getNextVoucherNumberHandler,
 } from './store-admin.controller';
 import {
@@ -24,6 +25,7 @@ import {
   updateFarmerStorageLinkSchema,
   getVoucherNumberQuerySchema,
   getDaybookQuerySchema,
+  getVouchersByFarmerStorageLinkParamsSchema,
 } from './store-admin.schema';
 import { authenticate, authorize } from '../../../../utils/auth';
 import { Role } from './store-admin.model';
@@ -157,6 +159,140 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       },
     },
     getFarmerStorageLinksByColdStorageHandler as never
+  );
+
+  // Get all vouchers (daybook-style) for a single farmer-storage-link (link in params) – returns all orders, no pagination
+  fastify.get(
+    '/farmer-storage-links/:farmerStorageLinkId/vouchers',
+    {
+      schema: {
+        ...getVouchersByFarmerStorageLinkParamsSchema,
+        description:
+          "Get all vouchers (daybook-style entries) for a single farmer-storage-link. Returns all orders (no pagination). Link must belong to the authenticated store admin's cold storage. Supports sortOrder (asc|desc) and gatePassType filter.",
+        tags: ['Store Admin'],
+        summary: 'Get vouchers by farmer-storage-link',
+        params: {
+          type: 'object',
+          required: ['farmerStorageLinkId'],
+          properties: {
+            farmerStorageLinkId: {
+              type: 'string',
+              description: 'Farmer storage link ID',
+            },
+          },
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            sortOrder: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort by date (default desc)',
+            },
+            gatePassType: {
+              type: 'string',
+              description:
+                'Filter entries that have at least one of these pass types: incoming, grading, storage, nikasi, outgoing (comma-separated or repeated)',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Daybook-style array of entries (one per incoming) with attached passes and summaries; all orders returned (no pagination)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  daybook: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        incoming: {
+                          type: 'object',
+                          additionalProperties: true,
+                        },
+                        farmer: {
+                          type: 'object',
+                          additionalProperties: true,
+                          nullable: true,
+                        },
+                        gradingPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        storagePasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        nikasiPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        outgoingPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        summaries: {
+                          type: 'object',
+                          properties: {
+                            totalBagsIncoming: { type: 'number' },
+                            totalBagsGraded: { type: 'number' },
+                            totalBagsStored: { type: 'number' },
+                            totalBagsNikasi: { type: 'number' },
+                            totalBagsOutgoing: { type: 'number' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Farmer storage link not found or not in your cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getVouchersByFarmerStorageLinkHandler as never
   );
 
   // Get next voucher number for a voucher type (cold storage from auth)

@@ -189,7 +189,7 @@ GradingGatePassSchema.index({ allocationStatus: 1, date: -1 });
 GradingGatePassSchema.index({ 'orderDetails.size': 1 });
 
 // Created by user lookup
-GradingGatePassSchema.index({ createdBy: 1 });
+// createdBy is indexed via field-level index: true
 
 /* =======================
    MODEL
