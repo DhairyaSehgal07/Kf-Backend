@@ -6,6 +6,7 @@ import {
   deleteStoreAdmin,
   checkMobileNumber,
   getFarmerStorageLinksByColdStorage,
+  getDaybook,
   loginStoreAdmin,
   logoutStoreAdmin,
   quickRegisterFarmer,
@@ -218,6 +219,77 @@ export async function getFarmerStorageLinksByColdStorageHandler(
       { error },
       'Error in getFarmerStorageLinksByColdStorageHandler'
     );
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving daybook (all gate passes) for the authenticated user's cold storage
+ */
+export async function getDaybookHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      return reply.code(401).send({
+        success: false,
+        error: {
+          code: 'MISSING_COLD_STORAGE',
+          message: 'Cold storage not found in token',
+        },
+      });
+    }
+
+    const daybook = await getDaybook(coldStorageId, request.log);
+
+    return reply.send({
+      success: true,
+      data: daybook,
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getDaybookHandler');
 
     if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({

@@ -496,6 +496,407 @@ export async function getFarmerStorageLinksByColdStorage(
   }
 }
 
+/** Summary of bag counts for one incoming gate pass in the daybook */
+export interface DaybookEntrySummaries {
+  totalBagsIncoming: number;
+  totalBagsGraded: number;
+  totalBagsStored: number;
+  totalBagsNikasi: number;
+  totalBagsOutgoing: number;
+}
+
+/** One daybook entry: an incoming gate pass with attached passes and pre-computed summaries */
+export interface DaybookEntry {
+  incoming: Record<string, unknown>;
+  farmer: Record<string, unknown> | null;
+  gradingPasses: unknown[];
+  storagePasses: unknown[];
+  nikasiPasses: unknown[];
+  outgoingPasses: unknown[];
+  summaries: DaybookEntrySummaries;
+}
+
+/**
+ * Retrieves the daybook using a single aggregation pipeline: for each incoming gate pass,
+ * attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries.
+ * Each voucher (incoming, grading, storage, nikasi, outgoing) has createdBy populated with store-admin
+ * name and mobileNumber. Uses $lookup with pipelines and $setIntersection for efficient joins; allows disk use for large result sets.
+ *
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Object with daybook array (each entry = one incoming with attached passes and summaries)
+ */
+export async function getDaybook(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+): Promise<{ daybook: DaybookEntry[] }> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    // Single indexed query: get link IDs for this cold storage (uses coldStorageId index)
+    const farmerStorageLinkIds = await FarmerStorageLink.find(
+      { coldStorageId: coldStorageObjectId },
+      { _id: 1 }
+    )
+      .lean()
+      .then((links) => links.map((l) => l._id));
+
+    if (farmerStorageLinkIds.length === 0) {
+      logger?.info({ coldStorageId }, 'Daybook: no farmer-storage links');
+      return { daybook: [] };
+    }
+
+    // Use model collection names (respects custom collection option in schemas)
+    const col = {
+      farmerStorageLinks: FarmerStorageLink.collection.name,
+      farmers: Farmer.collection.name,
+      storeAdmins: StoreAdmin.collection.name,
+      gradingGatePasses: GradingGatePass.collection.name,
+      storageGatePasses: StorageGatePass.collection.name,
+      nikasiGatePasses: NikasiGatePass.collection.name,
+      outgoingGatePasses: OutgoingGatePass.collection.name,
+    };
+
+    const pipeline: mongoose.PipelineStage[] = [
+      // Use index on farmerStorageLinkId + date (daybook index)
+      {
+        $match: {
+          farmerStorageLinkId: { $in: farmerStorageLinkIds },
+        },
+      },
+      { $sort: { date: -1, gatePassNo: -1 } },
+      // Populate link for farmer (linkedBy not included in response)
+      {
+        $lookup: {
+          from: col.farmerStorageLinks,
+          localField: 'farmerStorageLinkId',
+          foreignField: '_id',
+          as: 'linkDoc',
+        },
+      },
+      { $unwind: { path: '$linkDoc', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: col.farmers,
+          localField: 'linkDoc.farmerId',
+          foreignField: '_id',
+          as: 'farmerArr',
+        },
+      },
+      {
+        $lookup: {
+          from: col.storeAdmins,
+          localField: 'createdBy',
+          foreignField: '_id',
+          as: 'incomingCreatedByArr',
+          pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
+        },
+      },
+      // Grading passes for this incoming (uses index on incomingGatePassId), with createdBy populated
+      {
+        $lookup: {
+          from: col.gradingGatePasses,
+          let: { incomingId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$incomingGatePassId', '$$incomingId'] },
+              },
+            },
+            { $sort: { date: -1, gatePassNo: -1 } },
+            {
+              $lookup: {
+                from: col.storeAdmins,
+                localField: 'createdBy',
+                foreignField: '_id',
+                as: 'createdByPopulated',
+                pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
+              },
+            },
+            {
+              $addFields: {
+                createdBy: { $arrayElemAt: ['$createdByPopulated', 0] },
+              },
+            },
+            { $project: { createdByPopulated: 0 } },
+          ],
+          as: 'gradingPasses',
+        },
+      },
+      {
+        $addFields: {
+          gradingIds: '$gradingPasses._id',
+        },
+      },
+      // Storage passes that reference any of this incoming's grading passes, with createdBy populated
+      {
+        $lookup: {
+          from: col.storageGatePasses,
+          let: { gradingIds: '$gradingIds' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $gt: [
+                    {
+                      $size: {
+                        $setIntersection: [
+                          { $ifNull: ['$gradingGatePassIds', []] },
+                          '$$gradingIds',
+                        ],
+                      },
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { date: -1, gatePassNo: -1 } },
+            {
+              $lookup: {
+                from: col.storeAdmins,
+                localField: 'createdBy',
+                foreignField: '_id',
+                as: 'createdByPopulated',
+                pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
+              },
+            },
+            {
+              $addFields: {
+                createdBy: { $arrayElemAt: ['$createdByPopulated', 0] },
+              },
+            },
+            { $project: { createdByPopulated: 0 } },
+          ],
+          as: 'storagePasses',
+        },
+      },
+      {
+        $addFields: {
+          storageIds: '$storagePasses._id',
+        },
+      },
+      // Nikasi passes that reference any of this incoming's grading passes, with createdBy populated
+      {
+        $lookup: {
+          from: col.nikasiGatePasses,
+          let: { gradingIds: '$gradingIds' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $gt: [
+                    {
+                      $size: {
+                        $setIntersection: [
+                          { $ifNull: ['$gradingGatePassIds', []] },
+                          '$$gradingIds',
+                        ],
+                      },
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { date: -1, gatePassNo: -1 } },
+            {
+              $lookup: {
+                from: col.storeAdmins,
+                localField: 'createdBy',
+                foreignField: '_id',
+                as: 'createdByPopulated',
+                pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
+              },
+            },
+            {
+              $addFields: {
+                createdBy: { $arrayElemAt: ['$createdByPopulated', 0] },
+              },
+            },
+            { $project: { createdByPopulated: 0 } },
+          ],
+          as: 'nikasiPasses',
+        },
+      },
+      // Outgoing passes that reference any of this incoming's storage passes, with createdBy populated
+      {
+        $lookup: {
+          from: col.outgoingGatePasses,
+          let: { storageIds: '$storageIds' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $gt: [
+                    {
+                      $size: {
+                        $setIntersection: [
+                          { $ifNull: ['$storageGatePassIds', []] },
+                          '$$storageIds',
+                        ],
+                      },
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { date: -1, gatePassNo: -1 } },
+            {
+              $lookup: {
+                from: col.storeAdmins,
+                localField: 'createdBy',
+                foreignField: '_id',
+                as: 'createdByPopulated',
+                pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
+              },
+            },
+            {
+              $addFields: {
+                createdBy: { $arrayElemAt: ['$createdByPopulated', 0] },
+              },
+            },
+            { $project: { createdByPopulated: 0 } },
+          ],
+          as: 'outgoingPasses',
+        },
+      },
+      // Pre-compute summaries in the pipeline (no JS iteration)
+      {
+        $addFields: {
+          summaries: {
+            totalBagsIncoming: { $ifNull: ['$bagsReceived', 0] },
+            totalBagsGraded: {
+              $reduce: {
+                input: { $ifNull: ['$gradingPasses', []] },
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    {
+                      $sum: {
+                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            totalBagsStored: {
+              $reduce: {
+                input: { $ifNull: ['$storagePasses', []] },
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    {
+                      $sum: {
+                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            totalBagsNikasi: {
+              $reduce: {
+                input: { $ifNull: ['$nikasiPasses', []] },
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    {
+                      $sum: {
+                        $ifNull: ['$$this.orderDetails.quantityIssued', []],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            totalBagsOutgoing: {
+              $reduce: {
+                input: { $ifNull: ['$outgoingPasses', []] },
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    {
+                      $sum: {
+                        $ifNull: ['$$this.orderDetails.quantityIssued', []],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      // Project final shape: incoming with createdBy populated, farmer, arrays (each pass has createdBy), summaries
+      {
+        $project: {
+          _id: 0,
+          incoming: {
+            _id: '$_id',
+            farmerStorageLinkId: '$farmerStorageLinkId',
+            createdBy: { $arrayElemAt: ['$incomingCreatedByArr', 0] },
+            gatePassNo: '$gatePassNo',
+            date: '$date',
+            variety: '$variety',
+            truckNumber: '$truckNumber',
+            bagsReceived: '$bagsReceived',
+            weightSlip: '$weightSlip',
+            status: '$status',
+            gradingSummary: '$gradingSummary',
+            remarks: '$remarks',
+            createdAt: '$createdAt',
+            updatedAt: '$updatedAt',
+          },
+          farmer: { $arrayElemAt: ['$farmerArr', 0] },
+          gradingPasses: 1,
+          storagePasses: 1,
+          nikasiPasses: 1,
+          outgoingPasses: 1,
+          summaries: 1,
+        },
+      },
+    ];
+
+    const cursor = IncomingGatePass.aggregate(pipeline)
+      .allowDiskUse(true)
+      .cursor({ batchSize: 100 });
+
+    const daybook: DaybookEntry[] = [];
+    for await (const doc of cursor) {
+      daybook.push(doc as unknown as DaybookEntry);
+    }
+
+    logger?.info(
+      { coldStorageId, entryCount: daybook.length },
+      'Daybook retrieved'
+    );
+
+    return { daybook };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error({ error, coldStorageId }, 'Error retrieving daybook');
+
+    throw new AppError('Failed to retrieve daybook', 500, 'GET_DAYBOOK_ERROR');
+  }
+}
+
 /**
  * Authenticates a store admin and returns JWT token with populated cold storage
  * @param payload - Login credentials (mobileNumber and password)

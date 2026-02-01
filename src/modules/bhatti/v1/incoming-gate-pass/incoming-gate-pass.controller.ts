@@ -26,9 +26,11 @@ export async function createIncomingGatePassHandler(
   reply: FastifyReply
 ) {
   try {
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
     const incomingGatePass = await createIncomingGatePass(
       request.body,
-      request.log
+      request.log,
+      storeAdminId
     );
 
     return reply.code(201).send({

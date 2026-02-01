@@ -37,7 +37,12 @@ export async function createStorageGatePassHandler(
       'Create storage gate pass request'
     );
 
-    const result = await createStorageGatePass(request.body, request.log);
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const result = await createStorageGatePass(
+      request.body,
+      request.log,
+      storeAdminId
+    );
 
     return reply.code(201).send({
       status: 'Success',

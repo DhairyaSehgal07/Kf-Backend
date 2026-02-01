@@ -23,15 +23,6 @@ export const createIncomingGatePassSchema = z.object({
         'Invalid farmer storage link ID format'
       ),
 
-    receivedById: z
-      .string()
-      .trim()
-      .refine(
-        (val) => !val || mongoose.Types.ObjectId.isValid(val),
-        'Invalid received by ID format'
-      )
-      .optional(),
-
     gatePassNo: z.coerce
       .number()
       .int('Gate pass number must be an integer')
@@ -89,15 +80,6 @@ export const updateIncomingGatePassSchema = z.object({
       .refine(
         (val) => mongoose.Types.ObjectId.isValid(val),
         'Invalid farmer storage link ID format'
-      )
-      .optional(),
-
-    receivedById: z
-      .string()
-      .trim()
-      .refine(
-        (val) => !val || mongoose.Types.ObjectId.isValid(val),
-        'Invalid received by ID format'
       )
       .optional(),
 

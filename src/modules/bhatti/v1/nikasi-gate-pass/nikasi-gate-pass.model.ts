@@ -26,6 +26,7 @@ export interface INikasiGradingGatePassSnapshot {
 
 export interface INikasiGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
+  createdBy?: Types.ObjectId;
   gatePassNo: number;
   manualGatePassNumber?: number;
   gradingGatePassIds: Types.ObjectId[];
@@ -123,6 +124,12 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       index: true,
     },
 
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'StoreAdmin',
+      index: true,
+    },
+
     gatePassNo: {
       type: Number,
       required: true,
@@ -208,6 +215,9 @@ NikasiGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
+
+// Created by user lookup
+NikasiGatePassSchema.index({ createdBy: 1 });
 
 // Farmer storage link lookup
 NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

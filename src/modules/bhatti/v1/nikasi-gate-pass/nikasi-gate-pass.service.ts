@@ -429,7 +429,8 @@ function handleNikasiServiceError(
 
 export async function createNikasiGatePass(
   payload: CreateNikasiGatePassBody,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ): Promise<INikasiGatePass> {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -517,6 +518,7 @@ export async function createNikasiGatePass(
 
     const nikasiGatePass = new NikasiGatePass({
       farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
+      ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
       gatePassNo,
       gradingGatePassIds: validated.map(
         (v) => new Types.ObjectId(v.gradingGatePassId)

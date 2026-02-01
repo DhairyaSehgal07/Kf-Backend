@@ -20,11 +20,12 @@ import type { FastifyBaseLogger } from 'fastify';
  * @returns Created grading gate pass document
  * @throws ConflictError if gate pass number already exists
  * @throws ValidationError if input validation fails
- * @throws NotFoundError if incoming gate pass or graded by user not found
+ * @throws NotFoundError if incoming gate pass or created by user not found
  */
 export async function createGradingGatePass(
   payload: CreateGradingGatePassInput,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ) {
   try {
     // Validate incoming gate pass exists
@@ -62,14 +63,15 @@ export async function createGradingGatePass(
       );
     }
 
-    // Validate gradedById if provided
-    if (payload.gradedById) {
+    // Validate createdBy (store admin) if provided
+    let createdById: mongoose.Types.ObjectId | undefined;
+    if (createdBy) {
       const StoreAdmin = mongoose.model('StoreAdmin');
-      const storeAdmin = await StoreAdmin.findById(payload.gradedById);
+      const storeAdmin = await StoreAdmin.findById(createdBy);
 
       if (!storeAdmin) {
         logger?.warn(
-          { gradedById: payload.gradedById },
+          { createdBy },
           'Attempt to create grading gate pass with non-existent store admin'
         );
         throw new NotFoundError(
@@ -77,6 +79,7 @@ export async function createGradingGatePass(
           'STORE_ADMIN_NOT_FOUND'
         );
       }
+      createdById = new mongoose.Types.ObjectId(createdBy);
     }
 
     // Check for existing gate pass with same gate pass number
@@ -101,6 +104,7 @@ export async function createGradingGatePass(
       farmerStorageLinkId: new mongoose.Types.ObjectId(
         payload.farmerStorageLinkId
       ),
+      ...(createdById && { createdBy: createdById }),
       allocationStatus: payload.allocationStatus || 'UNALLOCATED',
     });
 
@@ -217,23 +221,6 @@ export async function updateGradingGatePass(
       }
     }
 
-    // Validate gradedById if being updated
-    if (payload.gradedById) {
-      const StoreAdmin = mongoose.model('StoreAdmin');
-      const storeAdmin = await StoreAdmin.findById(payload.gradedById);
-
-      if (!storeAdmin) {
-        logger?.warn(
-          { gradedById: payload.gradedById },
-          'Attempt to update grading gate pass with non-existent store admin'
-        );
-        throw new NotFoundError(
-          'Store admin not found',
-          'STORE_ADMIN_NOT_FOUND'
-        );
-      }
-    }
-
     // If gate pass number is being updated, check for conflicts
     if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
       const conflict = await GradingGatePass.findOne({
@@ -274,7 +261,6 @@ export async function updateGradingGatePass(
     // Compare each field and create audit entries
     const fieldsToCheck: Array<keyof typeof updateData> = [
       'incomingGatePassId',
-      'gradedById',
       'gatePassNo',
       'date',
       'variety',
@@ -456,7 +442,7 @@ export async function getGradingGatePassesByColdStorage(
           ],
         },
       })
-      .populate('gradedById', 'name mobileNumber')
+      .populate('createdBy', 'name mobileNumber')
       .sort({ date: -1, gatePassNo: -1 })
       .lean();
 
@@ -520,7 +506,7 @@ export async function getGradingGatePassesByFarmerStorageLink(
           ],
         },
       })
-      .populate('gradedById', 'name mobileNumber')
+      .populate('createdBy', 'name mobileNumber')
       .sort({ date: -1, gatePassNo: -1 })
       .lean();
 

@@ -379,7 +379,8 @@ function handleOutgoingServiceError(
 
 export async function createOutgoingGatePass(
   payload: CreateOutgoingGatePassBody,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ): Promise<IOutgoingGatePass> {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -462,6 +463,7 @@ export async function createOutgoingGatePass(
 
     const outgoingGatePass = new OutgoingGatePass({
       farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
+      ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
       storageGatePassIds: validated.map(
         (v) => new Types.ObjectId(v.storageGatePassId)
       ),

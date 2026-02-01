@@ -7,6 +7,7 @@ import {
   ConflictError,
   ValidationError,
 } from '../../../../utils/errors';
+import { AuthenticatedRequest } from '../../../../utils/auth';
 
 /**
  * Handler for creating a single outgoing gate pass from storage gate pass allocations.
@@ -26,7 +27,12 @@ export async function createOutgoingGatePassHandler(
       'Create outgoing gate pass request'
     );
 
-    const result = await createOutgoingGatePass(request.body, request.log);
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const result = await createOutgoingGatePass(
+      request.body,
+      request.log,
+      storeAdminId
+    );
 
     return reply.code(201).send({
       status: 'Success',

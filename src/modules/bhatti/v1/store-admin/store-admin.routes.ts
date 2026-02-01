@@ -10,6 +10,7 @@ import {
   quickRegisterFarmerHandler,
   updateFarmerStorageLinkHandler,
   getFarmerStorageLinksByColdStorageHandler,
+  getDaybookHandler,
   getNextVoucherNumberHandler,
 } from './store-admin.controller';
 import {
@@ -222,6 +223,99 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       },
     },
     getNextVoucherNumberHandler as never
+  );
+
+  // Get daybook (each incoming gate pass with attached passes, farmer populated, and summaries)
+  fastify.get(
+    '/daybook',
+    {
+      schema: {
+        description:
+          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries (totalBagsIncoming, totalBagsGraded, totalBagsStored, totalBagsNikasi, totalBagsOutgoing)',
+        tags: ['Store Admin'],
+        summary: 'Get daybook',
+        response: {
+          200: {
+            description:
+              'Daybook: array of entries (one per incoming) with attached passes and summaries',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  daybook: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        incoming: {
+                          type: 'object',
+                          additionalProperties: true,
+                        },
+                        farmer: {
+                          type: 'object',
+                          additionalProperties: true,
+                          nullable: true,
+                        },
+                        gradingPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        storagePasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        nikasiPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        outgoingPasses: {
+                          type: 'array',
+                          items: { type: 'object', additionalProperties: true },
+                        },
+                        summaries: {
+                          type: 'object',
+                          properties: {
+                            totalBagsIncoming: { type: 'number' },
+                            totalBagsGraded: { type: 'number' },
+                            totalBagsStored: { type: 'number' },
+                            totalBagsNikasi: { type: 'number' },
+                            totalBagsOutgoing: { type: 'number' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getDaybookHandler as never
   );
 
   // Get store admin by ID

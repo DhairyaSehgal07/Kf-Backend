@@ -31,7 +31,12 @@ export async function createNikasiGatePassHandler(
       'Create nikasi gate pass request'
     );
 
-    const result = await createNikasiGatePass(request.body, request.log);
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const result = await createNikasiGatePass(
+      request.body,
+      request.log,
+      storeAdminId
+    );
 
     return reply.code(201).send({
       status: 'Success',

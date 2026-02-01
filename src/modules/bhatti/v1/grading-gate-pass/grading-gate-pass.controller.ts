@@ -28,9 +28,11 @@ export async function createGradingGatePassHandler(
   reply: FastifyReply
 ) {
   try {
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
     const gradingGatePass = await createGradingGatePass(
       request.body,
-      request.log
+      request.log,
+      storeAdminId
     );
 
     return reply.code(201).send({

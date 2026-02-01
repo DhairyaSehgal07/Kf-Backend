@@ -20,11 +20,12 @@ import type { FastifyBaseLogger } from 'fastify';
  * @returns Created incoming gate pass document
  * @throws ConflictError if gate pass number already exists
  * @throws ValidationError if input validation fails
- * @throws NotFoundError if farmer storage link or received by user not found
+ * @throws NotFoundError if farmer storage link or created by user not found
  */
 export async function createIncomingGatePass(
   payload: CreateIncomingGatePassInput,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ) {
   try {
     // Validate farmer storage link exists
@@ -44,14 +45,15 @@ export async function createIncomingGatePass(
       );
     }
 
-    // Validate receivedById if provided
-    if (payload.receivedById) {
+    // Validate createdBy (store admin) if provided
+    let createdById: mongoose.Types.ObjectId | undefined;
+    if (createdBy) {
       const StoreAdmin = mongoose.model('StoreAdmin');
-      const storeAdmin = await StoreAdmin.findById(payload.receivedById);
+      const storeAdmin = await StoreAdmin.findById(createdBy);
 
       if (!storeAdmin) {
         logger?.warn(
-          { receivedById: payload.receivedById },
+          { createdBy },
           'Attempt to create incoming gate pass with non-existent store admin'
         );
         throw new NotFoundError(
@@ -59,6 +61,7 @@ export async function createIncomingGatePass(
           'STORE_ADMIN_NOT_FOUND'
         );
       }
+      createdById = new mongoose.Types.ObjectId(createdBy);
     }
 
     // Check for existing gate pass with same gate pass number
@@ -80,6 +83,7 @@ export async function createIncomingGatePass(
     // Create the incoming gate pass
     const incomingGatePass = await IncomingGatePass.create({
       ...payload,
+      ...(createdById && { createdBy: createdById }),
       gradingSummary: payload.gradingSummary || { totalGradedBags: 0 },
     });
 
@@ -196,23 +200,6 @@ export async function updateIncomingGatePass(
       }
     }
 
-    // Validate receivedById if being updated
-    if (payload.receivedById) {
-      const StoreAdmin = mongoose.model('StoreAdmin');
-      const storeAdmin = await StoreAdmin.findById(payload.receivedById);
-
-      if (!storeAdmin) {
-        logger?.warn(
-          { receivedById: payload.receivedById },
-          'Attempt to update incoming gate pass with non-existent store admin'
-        );
-        throw new NotFoundError(
-          'Store admin not found',
-          'STORE_ADMIN_NOT_FOUND'
-        );
-      }
-    }
-
     // If gate pass number is being updated, check for conflicts
     if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
       const conflict = await IncomingGatePass.findOne({
@@ -253,7 +240,6 @@ export async function updateIncomingGatePass(
     // Compare each field and create audit entries
     const fieldsToCheck: Array<keyof typeof updateData> = [
       'farmerStorageLinkId',
-      'receivedById',
       'gatePassNo',
       'date',
       'variety',
@@ -434,7 +420,7 @@ export async function getIncomingGatePassesByColdStorage(
           },
         ],
       })
-      .populate('receivedById', 'name mobileNumber')
+      .populate('createdBy', 'name mobileNumber')
       .sort({ date: -1, gatePassNo: -1 })
       .lean();
 

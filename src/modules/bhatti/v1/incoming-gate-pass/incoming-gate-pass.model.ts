@@ -26,7 +26,7 @@ interface IGradingSummary {
 
 export interface IIncomingGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
-  receivedById?: Types.ObjectId;
+  createdBy?: Types.ObjectId;
 
   gatePassNo: number;
   date: Date;
@@ -80,9 +80,10 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       index: true,
     },
 
-    receivedById: {
+    createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'StoreAdmin',
+      index: true,
     },
 
     gatePassNo: {
@@ -149,6 +150,13 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
 // Gate passes by farmer storage link
 IncomingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
+// Daybook: filter by farmer storage link, sort by date and gate pass number
+IncomingGatePassSchema.index({
+  farmerStorageLinkId: 1,
+  date: -1,
+  gatePassNo: -1,
+});
+
 // Gate passes by date for reporting
 IncomingGatePassSchema.index({ date: -1 });
 
@@ -156,8 +164,8 @@ IncomingGatePassSchema.index({ date: -1 });
 IncomingGatePassSchema.index({ status: 1, date: -1 });
 
 // Gate pass number lookup (already indexed via unique)
-// receivedById lookup
-IncomingGatePassSchema.index({ receivedById: 1 });
+// createdBy lookup
+IncomingGatePassSchema.index({ createdBy: 1 });
 
 /* =======================
    MODEL

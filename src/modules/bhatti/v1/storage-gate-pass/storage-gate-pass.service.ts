@@ -498,7 +498,8 @@ function handleServiceError(error: unknown, logger?: FastifyBaseLogger): never {
 async function createSingleStorageGatePass(
   payload: CreateStorageGatePassInput,
   session: ClientSession,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ): Promise<IStorageGatePass> {
   const {
     gatePassNo,
@@ -594,6 +595,7 @@ async function createSingleStorageGatePass(
 
   const storageGatePass = new StorageGatePass({
     farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
+    ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
     gatePassNo,
     gradingGatePassIds: validated.map(
       (v) => new Types.ObjectId(v.gradingGatePassId)
@@ -632,7 +634,8 @@ async function createSingleStorageGatePass(
  */
 export async function createStorageGatePass(
   payload: CreateStorageGatePassBody,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  createdBy?: string
 ): Promise<IStorageGatePass> {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -650,7 +653,8 @@ export async function createStorageGatePass(
     const result = await createSingleStorageGatePass(
       payload as CreateStorageGatePassInput,
       session,
-      logger
+      logger,
+      createdBy
     );
 
     await session.commitTransaction();

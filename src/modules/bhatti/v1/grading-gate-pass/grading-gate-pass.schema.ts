@@ -38,15 +38,6 @@ export const createGradingGatePassSchema = z.object({
         'Invalid incoming gate pass ID format'
       ),
 
-    gradedById: z
-      .string()
-      .trim()
-      .refine(
-        (val) => !val || mongoose.Types.ObjectId.isValid(val),
-        'Invalid graded by ID format'
-      )
-      .optional(),
-
     gatePassNo: z.coerce
       .number()
       .int('Gate pass number must be an integer')
@@ -95,15 +86,6 @@ export const updateGradingGatePassSchema = z.object({
       .refine(
         (val) => mongoose.Types.ObjectId.isValid(val),
         'Invalid incoming gate pass ID format'
-      )
-      .optional(),
-
-    gradedById: z
-      .string()
-      .trim()
-      .refine(
-        (val) => !val || mongoose.Types.ObjectId.isValid(val),
-        'Invalid graded by ID format'
       )
       .optional(),
 

@@ -34,7 +34,7 @@ interface IOrderDetail {
 export interface IGradingGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
   incomingGatePassId: Types.ObjectId;
-  gradedById?: Types.ObjectId;
+  createdBy?: Types.ObjectId;
 
   gatePassNo: number;
   manualGatePassNumber?: number;
@@ -113,9 +113,10 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       index: true,
     },
 
-    gradedById: {
+    createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'StoreAdmin',
+      index: true,
     },
 
     gatePassNo: {
@@ -187,8 +188,8 @@ GradingGatePassSchema.index({ allocationStatus: 1, date: -1 });
 // Order detail size for bulk update filters (optimistic locking)
 GradingGatePassSchema.index({ 'orderDetails.size': 1 });
 
-// Graded by user lookup
-GradingGatePassSchema.index({ gradedById: 1 });
+// Created by user lookup
+GradingGatePassSchema.index({ createdBy: 1 });
 
 /* =======================
    MODEL
