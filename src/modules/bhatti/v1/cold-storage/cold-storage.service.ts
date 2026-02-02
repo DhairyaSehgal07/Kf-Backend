@@ -1,4 +1,5 @@
 import { ColdStorage } from './cold-storage.model.js';
+import { Preferences } from '../preferences/preferences.model.js';
 import {
   CreateColdStorageInput,
   GetColdStoragesQuery,
@@ -41,16 +42,48 @@ export async function createColdStorage(
       );
     }
 
-    const coldStorage = await ColdStorage.create({
-      ...payload,
-    });
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const [coldStorage] = await ColdStorage.create([{ ...payload }], {
+        session,
+      });
 
-    logger?.info(
-      { coldStorageId: coldStorage._id, name: coldStorage.name },
-      'Cold storage created successfully'
-    );
+      const [preferences] = await Preferences.create(
+        [
+          {
+            coldStorageId: coldStorage._id,
+            bagSizes: [],
+            reportFormat: 'default',
+            custom: {},
+          },
+        ],
+        { session }
+      );
 
-    return coldStorage;
+      await ColdStorage.findByIdAndUpdate(
+        coldStorage._id,
+        { $set: { preferencesId: preferences._id } },
+        { session }
+      );
+
+      await session.commitTransaction();
+
+      logger?.info(
+        { coldStorageId: coldStorage._id, name: coldStorage.name },
+        'Cold storage and preferences created successfully'
+      );
+
+      const populated = await ColdStorage.findById(coldStorage._id)
+        .populate('preferencesId')
+        .lean();
+      return populated ?? coldStorage;
+    } catch (txError) {
+      await session.abortTransaction();
+      throw txError;
+    } finally {
+      await session.endSession();
+    }
   } catch (error) {
     // Re-throw known errors
     if (error instanceof ConflictError || error instanceof ValidationError) {
@@ -172,7 +205,9 @@ export async function getColdStorageById(
       throw new ValidationError('Invalid cold storage ID format', 'INVALID_ID');
     }
 
-    const coldStorage = await ColdStorage.findById(id).lean();
+    const coldStorage = await ColdStorage.findById(id)
+      .populate('preferencesId')
+      .lean();
 
     if (!coldStorage) {
       logger?.warn({ coldStorageId: id }, 'Cold storage not found');

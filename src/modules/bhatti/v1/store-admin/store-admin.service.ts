@@ -905,6 +905,7 @@ export async function getDaybook(
             farmerStorageLinkId: '$farmerStorageLinkId',
             createdBy: { $arrayElemAt: ['$incomingCreatedByArr', 0] },
             gatePassNo: '$gatePassNo',
+            manualGatePassNumber: '$manualGatePassNumber',
             date: '$date',
             variety: '$variety',
             truckNumber: '$truckNumber',

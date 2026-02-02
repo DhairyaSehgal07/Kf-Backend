@@ -199,7 +199,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
         response: {
           200: {
             description:
-              'Daybook-style array of entries (one per incoming) with attached passes and summaries; all orders returned (no pagination)',
+              'Daybook-style array of entries (one per incoming) with attached passes and summaries; all orders returned (no pagination). All vouchers (incoming, gradingPasses, storagePasses, nikasiPasses, outgoingPasses) include manualGatePassNumber when set.',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -410,6 +410,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                         incoming: {
                           type: 'object',
                           additionalProperties: true,
+                          description:
+                            'Incoming gate pass (includes manualGatePassNumber when set)',
                         },
                         farmer: {
                           type: 'object',
@@ -418,19 +420,39 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                         },
                         gradingPasses: {
                           type: 'array',
-                          items: { type: 'object', additionalProperties: true },
+                          items: {
+                            type: 'object',
+                            additionalProperties: true,
+                            description:
+                              'Each item includes manualGatePassNumber when set',
+                          },
                         },
                         storagePasses: {
                           type: 'array',
-                          items: { type: 'object', additionalProperties: true },
+                          items: {
+                            type: 'object',
+                            additionalProperties: true,
+                            description:
+                              'Each item includes manualGatePassNumber when set',
+                          },
                         },
                         nikasiPasses: {
                           type: 'array',
-                          items: { type: 'object', additionalProperties: true },
+                          items: {
+                            type: 'object',
+                            additionalProperties: true,
+                            description:
+                              'Each item includes manualGatePassNumber when set',
+                          },
                         },
                         outgoingPasses: {
                           type: 'array',
-                          items: { type: 'object', additionalProperties: true },
+                          items: {
+                            type: 'object',
+                            additionalProperties: true,
+                            description:
+                              'Each item includes manualGatePassNumber when set',
+                          },
                         },
                         summaries: {
                           type: 'object',

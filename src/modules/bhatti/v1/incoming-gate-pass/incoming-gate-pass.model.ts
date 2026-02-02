@@ -29,6 +29,7 @@ export interface IIncomingGatePass extends Document {
   createdBy?: Types.ObjectId;
 
   gatePassNo: number;
+  manualGatePassNumber?: number;
   date: Date;
 
   variety: string;
@@ -91,6 +92,10 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       required: true,
       unique: true,
       index: true,
+    },
+
+    manualGatePassNumber: {
+      type: Number,
     },
 
     date: {

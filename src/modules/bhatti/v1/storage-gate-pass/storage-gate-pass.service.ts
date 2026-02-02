@@ -503,6 +503,7 @@ async function createSingleStorageGatePass(
 ): Promise<IStorageGatePass> {
   const {
     gatePassNo,
+    manualGatePassNumber,
     date,
     variety,
     remarks,
@@ -597,6 +598,7 @@ async function createSingleStorageGatePass(
     farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
     ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
     gatePassNo,
+    ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
     gradingGatePassIds: validated.map(
       (v) => new Types.ObjectId(v.gradingGatePassId)
     ),

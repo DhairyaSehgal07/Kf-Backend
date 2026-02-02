@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-02
+
+### Added
+
+- **Preferences Module**
+  - Added preferences module (model, service, controller, schema) for cold storage–scoped settings
+  - GET `/api/bhatti/v1/cold-storage/:id/preferences` and PATCH `/api/bhatti/v1/cold-storage/:id/preferences` for bag sizes, report format, and custom key-value settings
+  - Cold storage creation now creates a linked Preferences document (one-to-one); cold storage responses can populate `preferencesId`
+  - Store-admin daybook and related responses include `preferences` when applicable
+
+- **Manual Gate Pass Number**
+  - Optional `manualGatePassNumber` on grading, incoming, storage, and nikasi gate pass create payloads and models
+  - Daybook and voucher responses (incoming, gradingPasses, storagePasses, nikasiPasses, outgoingPasses) include `manualGatePassNumber` when set
+
+### Changed
+
+- **Cold Storage**
+  - Cold storage model adds `preferencesId` reference to Preferences; service creates preferences on create and populates on get
+  - Cold storage routes mount preferences GET/PATCH under `/:id/preferences` with rate limiting and schema
+
+- **Gate Pass Schemas**
+  - Grading, incoming, nikasi, and storage gate pass create schemas accept optional `manualGatePassNumber` (integer, positive)
+  - Incoming gate pass model and nikasi/storage gate pass services persist and return `manualGatePassNumber` when provided
+
 ## [1.5.0] - 2026-02-01
 
 ### Added

@@ -438,6 +438,7 @@ export async function createNikasiGatePass(
   try {
     const {
       gatePassNo,
+      manualGatePassNumber,
       date,
       variety,
       from,
@@ -520,6 +521,7 @@ export async function createNikasiGatePass(
       farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
       ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
       gatePassNo,
+      ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
       gradingGatePassIds: validated.map(
         (v) => new Types.ObjectId(v.gradingGatePassId)
       ),

@@ -5,6 +5,10 @@ import {
   getColdStorageByIdHandler,
 } from './cold-storage.controller.js';
 import {
+  getPreferencesHandler,
+  updatePreferencesHandler,
+} from '../preferences/preferences.controller.js';
+import {
   createColdStorageSchema,
   getColdStoragesQuerySchema,
   getColdStorageByIdParamsSchema,
@@ -119,6 +123,135 @@ export async function coldStorageRoutes(fastify: FastifyInstance) {
       },
     },
     getColdStoragesHandler
+  );
+
+  // Get preferences for a cold storage (by cold storage ID)
+  fastify.get<{
+    Params: { id: string };
+  }>(
+    '/:id/preferences',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            description: 'Preferences',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  bagSizes: { type: 'array', items: {} },
+                  reportFormat: { type: 'string' },
+                  custom: { type: 'object', additionalProperties: true },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Cold storage or preferences not found',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 100,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getPreferencesHandler
+  );
+
+  // Update preferences for a cold storage
+  fastify.patch<{
+    Params: { id: string };
+    Body: {
+      bagSizes?: (number | string)[];
+      reportFormat?: string;
+      custom?: Record<string, unknown>;
+    };
+  }>(
+    '/:id/preferences',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+        body: {
+          type: 'object',
+          properties: {
+            bagSizes: { type: 'array', items: {} },
+            reportFormat: { type: 'string' },
+            custom: { type: 'object', additionalProperties: true },
+          },
+        },
+        response: {
+          200: {
+            description: 'Preferences updated',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: { type: 'object', additionalProperties: true },
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Cold storage or preferences not found',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    updatePreferencesHandler
   );
 
   // Get cold storage by ID

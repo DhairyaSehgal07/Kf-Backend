@@ -41,7 +41,8 @@ const ColdStorageSchema = new Schema<IColdStorage>(
     preferencesId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Preferences',
-      unique: true,
+      index: true,
+      // One-to-one is enforced by Preferences.coldStorageId (unique)
     },
     admins: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'StoreAdmin', default: [] },
