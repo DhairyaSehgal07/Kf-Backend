@@ -529,7 +529,8 @@ async function createSingleStorageGatePass(
   const link = await FarmerStorageLink.findById(farmerStorageLinkId)
     .session(session)
     .lean();
-  const coldStorageId = link?.coldStorageId;
+  const coldStorageId = (link as { coldStorageId?: mongoose.Types.ObjectId })
+    ?.coldStorageId;
   if (!coldStorageId) {
     throw new NotFoundError(
       'Farmer storage link not found',
@@ -755,7 +756,11 @@ export async function updateStorageGatePass(
       const currentLink = await FarmerStorageLink.findById(
         existingRecord.farmerStorageLinkId
       ).lean();
-      const coldStorageId = currentLink?.coldStorageId;
+      const coldStorageId = (
+        currentLink as {
+          coldStorageId?: mongoose.Types.ObjectId;
+        }
+      )?.coldStorageId;
       if (coldStorageId) {
         const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
           { coldStorageId }

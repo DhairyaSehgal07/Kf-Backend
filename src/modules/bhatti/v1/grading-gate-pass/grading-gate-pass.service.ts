@@ -87,7 +87,8 @@ export async function createGradingGatePass(
     const link = await FarmerStorageLink.findById(
       payload.farmerStorageLinkId
     ).lean();
-    const coldStorageId = link?.coldStorageId;
+    const coldStorageId = (link as { coldStorageId?: mongoose.Types.ObjectId })
+      ?.coldStorageId;
     if (!coldStorageId) {
       throw new NotFoundError(
         'Farmer storage link not found',
@@ -246,7 +247,11 @@ export async function updateGradingGatePass(
       const currentLink = await FarmerStorageLink.findById(
         existing.farmerStorageLinkId
       ).lean();
-      const coldStorageId = currentLink?.coldStorageId;
+      const coldStorageId = (
+        currentLink as {
+          coldStorageId?: mongoose.Types.ObjectId;
+        }
+      )?.coldStorageId;
       if (coldStorageId) {
         const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
           { coldStorageId }

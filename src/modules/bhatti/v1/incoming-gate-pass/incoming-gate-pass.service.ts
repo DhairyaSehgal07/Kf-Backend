@@ -217,7 +217,11 @@ export async function updateIncomingGatePass(
       const currentLink = await FarmerStorageLink.findById(
         existing.farmerStorageLinkId
       ).lean();
-      const coldStorageId = currentLink?.coldStorageId;
+      const coldStorageId = (
+        currentLink as {
+          coldStorageId?: mongoose.Types.ObjectId;
+        }
+      )?.coldStorageId;
       if (coldStorageId) {
         const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
           { coldStorageId }

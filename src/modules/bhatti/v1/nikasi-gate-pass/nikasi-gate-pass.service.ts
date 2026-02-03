@@ -466,7 +466,8 @@ export async function createNikasiGatePass(
     const link = await FarmerStorageLink.findById(farmerStorageLinkId)
       .session(session)
       .lean();
-    const coldStorageId = link?.coldStorageId;
+    const coldStorageId = (link as { coldStorageId?: mongoose.Types.ObjectId })
+      ?.coldStorageId;
     if (!coldStorageId) {
       throw new NotFoundError(
         'Farmer storage link not found',
