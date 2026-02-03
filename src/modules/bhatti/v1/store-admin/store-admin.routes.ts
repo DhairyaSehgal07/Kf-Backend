@@ -98,7 +98,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate, authorize(Role.Admin)], // Only Admin can create store admins
+      // No authentication required – register/create store admin is an open route
       config: {
         rateLimit: {
           max: 10, // 10 requests

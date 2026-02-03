@@ -82,9 +82,28 @@ export async function createGradingGatePass(
       createdById = new mongoose.Types.ObjectId(createdBy);
     }
 
-    // Check for existing gate pass with same gate pass number
+    // Voucher must be unique per cold storage
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const link = await FarmerStorageLink.findById(
+      payload.farmerStorageLinkId
+    ).lean();
+    const coldStorageId = link?.coldStorageId;
+    if (!coldStorageId) {
+      throw new NotFoundError(
+        'Farmer storage link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+    const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
+      coldStorageId,
+    })
+      .distinct('_id')
+      .lean();
+
+    // Check for existing gate pass with same gate pass number within this cold storage
     const existing = await GradingGatePass.findOne({
       gatePassNo: payload.gatePassNo,
+      farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
     });
 
     if (existing) {
@@ -221,25 +240,38 @@ export async function updateGradingGatePass(
       }
     }
 
-    // If gate pass number is being updated, check for conflicts
+    // If gate pass number is being updated, check for conflicts within same cold storage
     if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
-      const conflict = await GradingGatePass.findOne({
-        gatePassNo: payload.gatePassNo,
-        _id: { $ne: id },
-      });
+      const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+      const currentLink = await FarmerStorageLink.findById(
+        existing.farmerStorageLinkId
+      ).lean();
+      const coldStorageId = currentLink?.coldStorageId;
+      if (coldStorageId) {
+        const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
+          { coldStorageId }
+        )
+          .distinct('_id')
+          .lean();
+        const conflict = await GradingGatePass.findOne({
+          gatePassNo: payload.gatePassNo,
+          _id: { $ne: id },
+          farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
+        });
 
-      if (conflict) {
-        logger?.warn(
-          {
-            gradingGatePassId: id,
-            gatePassNo: payload.gatePassNo,
-          },
-          'Attempt to update to existing gate pass number'
-        );
-        throw new ConflictError(
-          'Gate pass with this number already exists',
-          'GATE_PASS_NUMBER_EXISTS'
-        );
+        if (conflict) {
+          logger?.warn(
+            {
+              gradingGatePassId: id,
+              gatePassNo: payload.gatePassNo,
+            },
+            'Attempt to update to existing gate pass number'
+          );
+          throw new ConflictError(
+            'Gate pass with this number already exists',
+            'GATE_PASS_NUMBER_EXISTS'
+          );
+        }
       }
     }
 

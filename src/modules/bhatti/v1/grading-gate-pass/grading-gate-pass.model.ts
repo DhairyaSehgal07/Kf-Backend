@@ -122,7 +122,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      unique: true,
       index: true,
     },
 
@@ -187,6 +186,12 @@ GradingGatePassSchema.index({ allocationStatus: 1, date: -1 });
 
 // Order detail size for bulk update filters (optimistic locking)
 GradingGatePassSchema.index({ 'orderDetails.size': 1 });
+
+// Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
+GradingGatePassSchema.index(
+  { farmerStorageLinkId: 1, gatePassNo: 1 },
+  { unique: true }
+);
 
 // Created by user lookup
 // createdBy is indexed via field-level index: true

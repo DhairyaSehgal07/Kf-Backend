@@ -90,7 +90,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      unique: true,
       index: true,
     },
 
@@ -168,7 +167,12 @@ IncomingGatePassSchema.index({ date: -1 });
 // Status queries
 IncomingGatePassSchema.index({ status: 1, date: -1 });
 
-// Gate pass number lookup (already indexed via unique)
+// Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
+IncomingGatePassSchema.index(
+  { farmerStorageLinkId: 1, gatePassNo: 1 },
+  { unique: true }
+);
+
 // createdBy is indexed via field-level index: true
 
 /* =======================

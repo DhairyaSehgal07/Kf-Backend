@@ -64,9 +64,20 @@ export async function createIncomingGatePass(
       createdById = new mongoose.Types.ObjectId(createdBy);
     }
 
-    // Check for existing gate pass with same gate pass number
+    // Voucher must be unique per cold storage (farmer storage link already validated above)
+    const coldStorageId = (
+      farmerStorageLink as { coldStorageId: mongoose.Types.ObjectId }
+    ).coldStorageId;
+    const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
+      coldStorageId,
+    })
+      .distinct('_id')
+      .lean();
+
+    // Check for existing gate pass with same gate pass number within this cold storage
     const existing = await IncomingGatePass.findOne({
       gatePassNo: payload.gatePassNo,
+      farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
     });
 
     if (existing) {
@@ -200,25 +211,38 @@ export async function updateIncomingGatePass(
       }
     }
 
-    // If gate pass number is being updated, check for conflicts
+    // If gate pass number is being updated, check for conflicts within same cold storage
     if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
-      const conflict = await IncomingGatePass.findOne({
-        gatePassNo: payload.gatePassNo,
-        _id: { $ne: id },
-      });
+      const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+      const currentLink = await FarmerStorageLink.findById(
+        existing.farmerStorageLinkId
+      ).lean();
+      const coldStorageId = currentLink?.coldStorageId;
+      if (coldStorageId) {
+        const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
+          { coldStorageId }
+        )
+          .distinct('_id')
+          .lean();
+        const conflict = await IncomingGatePass.findOne({
+          gatePassNo: payload.gatePassNo,
+          _id: { $ne: id },
+          farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
+        });
 
-      if (conflict) {
-        logger?.warn(
-          {
-            incomingGatePassId: id,
-            gatePassNo: payload.gatePassNo,
-          },
-          'Attempt to update to existing gate pass number'
-        );
-        throw new ConflictError(
-          'Gate pass with this number already exists',
-          'GATE_PASS_NUMBER_EXISTS'
-        );
+        if (conflict) {
+          logger?.warn(
+            {
+              incomingGatePassId: id,
+              gatePassNo: payload.gatePassNo,
+            },
+            'Attempt to update to existing gate pass number'
+          );
+          throw new ConflictError(
+            'Gate pass with this number already exists',
+            'GATE_PASS_NUMBER_EXISTS'
+          );
+        }
       }
     }
 

@@ -189,7 +189,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      unique: true,
       index: true,
     },
 
@@ -267,14 +266,18 @@ OutgoingGatePassSchema.index(
 // Farmer storage link lookup
 OutgoingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
+// Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
+OutgoingGatePassSchema.index(
+  { farmerStorageLinkId: 1, gatePassNo: 1 },
+  { unique: true }
+);
+
 // One storage → many outgoing passes (chronological)
 OutgoingGatePassSchema.index({ storageGatePassId: 1, createdAt: -1 });
 OutgoingGatePassSchema.index({ storageGatePassIds: 1, createdAt: -1 });
 
 // Gate passes by date for reporting
 OutgoingGatePassSchema.index({ date: -1 });
-
-// Gate pass number lookup (already indexed via unique)
 
 /* =======================
    MODEL

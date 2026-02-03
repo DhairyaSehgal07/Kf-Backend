@@ -22,9 +22,6 @@ export interface IColdStorage extends Document {
   preferencesId?: Types.ObjectId;
   // preferences?: Preferences; // You can populate this if you have Preferences model
   admins: Types.ObjectId[]; // StoreAdmin references
-  links: Types.ObjectId[]; // FarmerStorageLink references
-  incomingOrders: Types.ObjectId[]; // IncomingOrder references
-  outgoingOrders: Types.ObjectId[]; // OutgoingOrder references
 }
 
 // Mongoose schema
@@ -46,27 +43,6 @@ const ColdStorageSchema = new Schema<IColdStorage>(
     },
     admins: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'StoreAdmin', default: [] },
-    ],
-    links: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'FarmerStorageLink',
-        default: [],
-      },
-    ],
-    incomingOrders: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'IncomingOrder',
-        default: [],
-      },
-    ],
-    outgoingOrders: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'OutgoingOrder',
-        default: [],
-      },
     ],
   },
   {

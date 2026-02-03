@@ -202,7 +202,6 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      unique: true,
       index: true,
     },
 
@@ -284,6 +283,12 @@ StorageGatePassSchema.index(
 
 // Farmer storage link lookup
 StorageGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
+
+// Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
+StorageGatePassSchema.index(
+  { farmerStorageLinkId: 1, gatePassNo: 1 },
+  { unique: true }
+);
 
 // Multiple grading → many storage passes (chronological)
 StorageGatePassSchema.index({ gradingGatePassIds: 1, createdAt: -1 });

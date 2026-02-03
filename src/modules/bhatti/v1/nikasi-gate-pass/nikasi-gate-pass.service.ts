@@ -461,12 +461,34 @@ export async function createNikasiGatePass(
       }
     }
 
-    const existingByGatePassNo = await NikasiGatePass.findOne({ gatePassNo })
+    // Voucher must be unique per cold storage
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const link = await FarmerStorageLink.findById(farmerStorageLinkId)
+      .session(session)
+      .lean();
+    const coldStorageId = link?.coldStorageId;
+    if (!coldStorageId) {
+      throw new NotFoundError(
+        'Farmer storage link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+    const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
+      coldStorageId,
+    })
+      .session(session)
+      .distinct('_id')
+      .lean();
+
+    const existingByGatePassNo = await NikasiGatePass.findOne({
+      gatePassNo,
+      farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
+    })
       .session(session)
       .lean();
     if (existingByGatePassNo) {
       throw new ConflictError(
-        `Gate pass number ${gatePassNo} already exists`,
+        `Gate pass number ${gatePassNo} already exists for this cold storage`,
         'GATE_PASS_NUMBER_EXISTS'
       );
     }
