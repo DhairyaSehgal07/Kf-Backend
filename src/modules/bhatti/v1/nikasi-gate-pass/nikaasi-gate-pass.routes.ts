@@ -65,7 +65,7 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 20,
+          max: 60,
           timeWindow: '1 minute',
         },
       },
@@ -116,7 +116,7 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },

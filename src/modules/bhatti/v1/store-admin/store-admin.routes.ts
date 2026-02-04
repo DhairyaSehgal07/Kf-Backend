@@ -101,8 +101,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       // No authentication required – register/create store admin is an open route
       config: {
         rateLimit: {
-          max: 10, // 10 requests
-          timeWindow: '1 minute', // per minute
+          max: 30, // 30 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -153,7 +153,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },
@@ -192,7 +192,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
             gatePassType: {
               type: 'string',
               description:
-                'Filter entries that have at least one of these pass types: incoming, grading, storage, nikasi, outgoing (comma-separated or repeated)',
+                'Filter by stage "up to" (incoming|grading|storage|nikasi|outgoing). Returns vouchers that have reached this stage and all prior stages but no later stage. E.g. storage = has incoming+grading+storage, no nikasi/outgoing.',
             },
           },
         },
@@ -287,7 +287,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },
@@ -354,7 +354,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },
@@ -369,7 +369,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       schema: {
         ...getDaybookQuerySchema,
         description:
-          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries. Supports pagination (limit default 10, page), sorting by date (sortOrder: asc|desc), and filtering by gate pass type (gatePassType: incoming, grading, storage, nikasi, outgoing; comma-separated or repeated).',
+          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries. Supports pagination (limit default 10, page), sorting by date (sortOrder: asc|desc), and filtering by stage (gatePassType: incoming, grading, storage, nikasi, outgoing). Filter is "up to" that stage: e.g. incoming = only vouchers with incoming (no grading/storage/nikasi/outgoing); storage = vouchers that have reached storage but not nikasi/outgoing. Flow: Incoming → Grading → Storage → Nikasi → Outgoing.',
         tags: ['Store Admin'],
         summary: 'Get daybook',
         querystring: {
@@ -388,7 +388,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
             gatePassType: {
               type: 'string',
               description:
-                'Filter entries that have at least one of these pass types: incoming, grading, storage, nikasi, outgoing (comma-separated or repeated)',
+                'Filter by stage "up to" (incoming|grading|storage|nikasi|outgoing). Returns vouchers that have reached this stage and all prior stages but no later stage. E.g. storage = has incoming+grading+storage, no nikasi/outgoing.',
             },
           },
         },
@@ -499,7 +499,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },
@@ -558,8 +558,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 100, // 100 requests
-          timeWindow: '1 minute', // per minute
+          max: 200, // 200 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -632,8 +632,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -692,8 +692,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate, authorize(Role.Admin)], // Only Admin can delete store admins
       config: {
         rateLimit: {
-          max: 10, // 10 requests
-          timeWindow: '1 minute', // per minute
+          max: 30, // 30 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -742,7 +742,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       },
       config: {
         rateLimit: {
-          max: 30, // 30 requests per minute for checking availability
+          max: 60, // 60 requests per minute for checking availability
           timeWindow: '1 minute',
         },
       },
@@ -775,8 +775,51 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
               message: { type: 'string' },
             },
           },
+          400: {
+            description:
+              'Bad request - missing or invalid body (mobileNumber, password)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
           401: {
-            description: 'Unauthorized - invalid credentials',
+            description: 'Unauthorized - invalid credentials or account locked',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          429: {
+            description: 'Too many login attempts - try again later',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          500: {
+            description: 'Internal server error',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -793,7 +836,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       },
       config: {
         rateLimit: {
-          max: 5, // 5 requests per minute for login (stricter)
+          max: 100, // 100 requests per minute for login
           timeWindow: '1 minute',
         },
       },
@@ -823,8 +866,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication to logout
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -906,8 +949,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -989,8 +1032,8 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },

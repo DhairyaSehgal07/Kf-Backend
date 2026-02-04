@@ -62,7 +62,7 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 20,
+          max: 60,
           timeWindow: '1 minute',
         },
       },

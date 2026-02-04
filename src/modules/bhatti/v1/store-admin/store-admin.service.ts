@@ -516,13 +516,22 @@ export interface DaybookEntry {
   summaries: DaybookEntrySummaries;
 }
 
-/** Gate pass type filter for daybook (entries that have at least one of these pass types) */
+/** Gate pass type filter for daybook – filter by stage "up to" (inclusive); flow: Incoming → Grading → Storage → Nikasi → Outgoing */
 export type DaybookGatePassType =
   | 'incoming'
   | 'grading'
   | 'storage'
   | 'nikasi'
   | 'outgoing';
+
+/** Stage order for daybook filter (index = order in flow) */
+const DAYBOOK_STAGE_ORDER: DaybookGatePassType[] = [
+  'incoming',
+  'grading',
+  'storage',
+  'nikasi',
+  'outgoing',
+];
 
 /** Options for daybook retrieval: pagination, sort, and filter by gate pass type */
 export interface GetDaybookOptions {
@@ -932,60 +941,82 @@ export async function getDaybook(
       },
     ];
 
-    // Optional filter: only entries that have at least one of the selected gate pass types
+    // Optional filter: "up to" stage – return vouchers that have reached the selected stage (and all prior) but no later stage.
+    // Flow: Incoming → Grading → Storage → Nikasi → Outgoing.
+    // E.g. "incoming" = only incoming (no grading/storage/nikasi/outgoing); "storage" = has incoming+grading+storage, no nikasi/outgoing.
     if (gatePassTypes && gatePassTypes.length > 0) {
-      const typeConditions: mongoose.PipelineStage.Match['$match'][string][] =
+      const selectedStage =
+        gatePassTypes.length === 1
+          ? gatePassTypes[0]
+          : (gatePassTypes.reduce((max, t) => {
+              const maxIdx = DAYBOOK_STAGE_ORDER.indexOf(max);
+              const idx = DAYBOOK_STAGE_ORDER.indexOf(t);
+              return idx > maxIdx ? t : max;
+            }) as DaybookGatePassType);
+      const stageIndex = DAYBOOK_STAGE_ORDER.indexOf(selectedStage);
+      const andConditions: mongoose.PipelineStage.Match['$match'][string][] =
         [];
-      if (gatePassTypes.includes('grading')) {
-        typeConditions.push({
+
+      // Must have each stage up to and including selected (incoming is always present)
+      if (stageIndex >= 1) {
+        andConditions.push({
           $gt: [{ $size: { $ifNull: ['$gradingPasses', []] } }, 0],
         });
       }
-      if (gatePassTypes.includes('storage')) {
-        typeConditions.push({
+      if (stageIndex >= 2) {
+        andConditions.push({
           $gt: [{ $size: { $ifNull: ['$storagePasses', []] } }, 0],
         });
       }
-      if (gatePassTypes.includes('nikasi')) {
-        typeConditions.push({
+      if (stageIndex >= 3) {
+        andConditions.push({
           $gt: [{ $size: { $ifNull: ['$nikasiPasses', []] } }, 0],
         });
       }
-      if (gatePassTypes.includes('outgoing')) {
-        typeConditions.push({
+      if (stageIndex >= 4) {
+        andConditions.push({
           $gt: [{ $size: { $ifNull: ['$outgoingPasses', []] } }, 0],
         });
       }
-      if (gatePassTypes.includes('incoming')) {
-        // Every entry has incoming (root doc); include all when filtering by incoming
-        typeConditions.push({ $expr: true });
+
+      // Must NOT have any stage after the selected one
+      if (stageIndex < 1) {
+        andConditions.push({
+          $eq: [{ $size: { $ifNull: ['$gradingPasses', []] } }, 0],
+        });
       }
-      if (typeConditions.length > 0) {
-        pipeline.push({
-          $match: {
-            $or: typeConditions.map((expr) => ({ $expr: expr })),
-          },
+      if (stageIndex < 2) {
+        andConditions.push({
+          $eq: [{ $size: { $ifNull: ['$storagePasses', []] } }, 0],
+        });
+      }
+      if (stageIndex < 3) {
+        andConditions.push({
+          $eq: [{ $size: { $ifNull: ['$nikasiPasses', []] } }, 0],
+        });
+      }
+      if (stageIndex < 4) {
+        andConditions.push({
+          $eq: [{ $size: { $ifNull: ['$outgoingPasses', []] } }, 0],
         });
       }
 
-      // When filtering by type, only include those pass arrays in the response; empty the rest
+      pipeline.push({
+        $match: {
+          $expr: { $and: andConditions },
+        },
+      });
+
+      // In response, include pass arrays only up to the selected stage; empty the rest
       const passProject: Record<string, unknown> = {
         incoming: '$incoming',
         farmer: '$farmer',
         summaries: '$summaries',
       };
-      passProject['gradingPasses'] = gatePassTypes.includes('grading')
-        ? '$gradingPasses'
-        : [];
-      passProject['storagePasses'] = gatePassTypes.includes('storage')
-        ? '$storagePasses'
-        : [];
-      passProject['nikasiPasses'] = gatePassTypes.includes('nikasi')
-        ? '$nikasiPasses'
-        : [];
-      passProject['outgoingPasses'] = gatePassTypes.includes('outgoing')
-        ? '$outgoingPasses'
-        : [];
+      passProject['gradingPasses'] = stageIndex >= 1 ? '$gradingPasses' : [];
+      passProject['storagePasses'] = stageIndex >= 2 ? '$storagePasses' : [];
+      passProject['nikasiPasses'] = stageIndex >= 3 ? '$nikasiPasses' : [];
+      passProject['outgoingPasses'] = stageIndex >= 4 ? '$outgoingPasses' : [];
       pipeline.push({ $project: passProject });
     }
 

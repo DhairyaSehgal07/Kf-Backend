@@ -81,8 +81,8 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },
@@ -132,7 +132,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 100,
+          max: 200,
           timeWindow: '1 minute',
         },
       },
@@ -206,8 +206,8 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate], // Require authentication
       config: {
         rateLimit: {
-          max: 20, // 20 requests
-          timeWindow: '1 minute', // per minute
+          max: 60, // 60 requests per minute
+          timeWindow: '1 minute',
         },
       },
     },

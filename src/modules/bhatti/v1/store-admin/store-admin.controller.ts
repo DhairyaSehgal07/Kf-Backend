@@ -722,14 +722,62 @@ export async function checkMobileNumberHandler(
 }
 
 /**
- * Handler for store admin login
+ * Standard error payload sent to client for all login error responses.
+ * Ensures client always receives a consistent JSON shape (avoids "Network Error" from malformed responses).
+ */
+function sendLoginError(
+  reply: FastifyReply,
+  statusCode: number,
+  code: string,
+  message: string
+) {
+  return reply.code(statusCode).send({
+    success: false,
+    error: { code, message },
+  });
+}
+
+/**
+ * Handler for store admin login.
+ * Ensures every path returns proper JSON so the client never sees "Network Error" from missing/malformed responses.
  */
 export async function loginStoreAdminHandler(
   request: FastifyRequest<{ Body: LoginStoreAdminInput }>,
   reply: FastifyReply
 ) {
   try {
-    const result = await loginStoreAdmin(request.body, request.log);
+    // Validate body early so we always return JSON (client often sees "Network Error" when body is missing/wrong)
+    const body = request.body;
+    if (!body || typeof body !== 'object') {
+      return sendLoginError(
+        reply,
+        400,
+        'BAD_REQUEST',
+        'Request body is required and must be a JSON object with mobileNumber and password'
+      );
+    }
+    const { mobileNumber, password } = body as Record<string, unknown>;
+    if (typeof mobileNumber !== 'string' || !mobileNumber.trim()) {
+      return sendLoginError(
+        reply,
+        400,
+        'VALIDATION_ERROR',
+        'Mobile number is required and must be a non-empty string'
+      );
+    }
+    if (typeof password !== 'string' || !password) {
+      return sendLoginError(
+        reply,
+        400,
+        'VALIDATION_ERROR',
+        'Password is required'
+      );
+    }
+
+    const result = await loginStoreAdmin(
+      { mobileNumber: mobileNumber.trim(), password },
+      request.log
+    );
 
     const payload = {
       id: result.storeAdmin._id,
@@ -753,43 +801,37 @@ export async function loginStoreAdminHandler(
     });
   } catch (error) {
     request.log.error(
-      { error, body: request.body },
+      { err: error, body: request.body },
       'Error in loginStoreAdminHandler'
     );
 
+    // Known app errors – always return consistent JSON
     if (error instanceof UnauthorizedError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
+      return sendLoginError(reply, error.statusCode, error.code, error.message);
     }
 
     if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
+      return sendLoginError(reply, error.statusCode, error.code, error.message);
     }
 
-    // Fallback for unexpected errors
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
-      },
-    });
+    // ValidationError extends AppError but handle explicitly for clarity
+    if (error instanceof ValidationError) {
+      return sendLoginError(reply, 400, error.code, error.message);
+    }
+
+    // Non-Error throws (e.g. string or object) – still send valid JSON
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'An unexpected error occurred';
+    const safeMessage =
+      process.env.NODE_ENV === 'development'
+        ? message
+        : 'An unexpected error occurred';
+
+    return sendLoginError(reply, 500, 'INTERNAL_SERVER_ERROR', safeMessage);
   }
 }
 

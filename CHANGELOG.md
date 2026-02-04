@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-02-04
+
+### Changed
+
+- **Store Admin Login – Error handling**
+  - Login handler now validates request body early and returns consistent JSON for all error paths so clients receive clear messages instead of generic "Network Error"
+  - Added `sendLoginError` helper and explicit handling for missing/invalid body, `ValidationError`, and non-Error throws
+  - Login route response schema documents 400 (bad request), 401 (invalid credentials / account locked), 429 (rate limit), and 500 (internal error) with `success` and `error: { code, message }`
+
+- **Rate limits relaxed**
+  - **Store admin routes**: create/delete 10→30/min; list/get/update 100→200/min; check-mobile 30→60/min; login 50→100/min; logout and others 20→60/min
+  - **Incoming, grading, nikasi, storage, outgoing gate pass routes**: 20→60/min and 100→200/min where applicable
+
 ## [1.6.0] - 2026-02-02
 
 ### Added
