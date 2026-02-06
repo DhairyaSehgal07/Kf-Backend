@@ -22,8 +22,7 @@ const PreferencesSchema = new Schema<IPreferences>(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ColdStorage',
       required: true,
-      unique: true,
-      index: true,
+      unique: true, // unique implies an index; do not also use index: true or schema.index()
     },
     bagSizes: {
       type: [Schema.Types.Mixed],
@@ -43,8 +42,6 @@ const PreferencesSchema = new Schema<IPreferences>(
     timestamps: true,
   }
 );
-
-PreferencesSchema.index({ coldStorageId: 1 });
 
 export const Preferences = mongoose.model<IPreferences>(
   'Preferences',
