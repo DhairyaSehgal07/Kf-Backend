@@ -610,9 +610,117 @@ export async function createNikasiGatePass(
 ======================= */
 
 /**
+ * Expands bulk payload into one CreateNikasiGatePassBody per grading gate pass.
+ * Assigns unique gatePassNo per cold storage (reuses pass.gatePassNo for first
+ * grading gate pass in each pass; uses next available for additional ones).
+ */
+async function expandBulkToSinglePayloads(
+  passes: CreateNikasiGatePassBody[],
+  linkIdToColdStorage: Map<string, string>,
+  farmerStorageLinkIdsByColdStorage: Map<string, Types.ObjectId[]>,
+  session: ClientSession
+): Promise<CreateNikasiGatePassBody[]> {
+  const flattened: Array<{
+    pass: CreateNikasiGatePassBody;
+    passIndex: number;
+    gradingGatePass: CreateNikasiGatePassBody['gradingGatePasses'][number];
+  }> = [];
+  for (let i = 0; i < passes.length; i++) {
+    const pass = passes[i];
+    for (const gp of pass.gradingGatePasses) {
+      flattened.push({ pass, passIndex: i, gradingGatePass: gp });
+    }
+  }
+
+  // Per cold storage: used gate pass numbers and next available
+  const coldStorageState = new Map<
+    string,
+    {
+      used: Set<number>;
+      nextAvailable: number;
+      startedPassIndices: Set<number>;
+    }
+  >();
+
+  async function getNextAvailableAndUsed(coldStorageId: string): Promise<{
+    used: Set<number>;
+    nextAvailable: number;
+    startedPassIndices: Set<number>;
+  }> {
+    let state = coldStorageState.get(coldStorageId);
+    if (state) return state;
+
+    const linkIds = farmerStorageLinkIdsByColdStorage.get(coldStorageId) ?? [];
+    const existingMax = await NikasiGatePass.find({
+      farmerStorageLinkId: { $in: linkIds },
+    })
+      .session(session)
+      .sort({ gatePassNo: -1 })
+      .limit(1)
+      .lean();
+
+    const maxFromDb = existingMax[0]
+      ? (existingMax[0] as { gatePassNo: number }).gatePassNo
+      : 0;
+    state = {
+      used: new Set(),
+      nextAvailable: maxFromDb + 1,
+      startedPassIndices: new Set(),
+    };
+    coldStorageState.set(coldStorageId, state);
+    return state;
+  }
+
+  const singlePayloads: CreateNikasiGatePassBody[] = [];
+
+  for (const item of flattened) {
+    const lid =
+      typeof item.pass.farmerStorageLinkId === 'string'
+        ? item.pass.farmerStorageLinkId
+        : (item.pass.farmerStorageLinkId as Types.ObjectId).toString();
+    const coldStorageId = linkIdToColdStorage.get(lid);
+    if (!coldStorageId) continue; // already validated earlier
+
+    const state = await getNextAvailableAndUsed(coldStorageId);
+    const isFirstFromPass = !state.startedPassIndices.has(item.passIndex);
+
+    let gatePassNo: number;
+    if (isFirstFromPass) {
+      state.startedPassIndices.add(item.passIndex);
+      gatePassNo = item.pass.gatePassNo;
+      if (state.used.has(gatePassNo)) {
+        gatePassNo = state.nextAvailable++;
+      }
+    } else {
+      gatePassNo = state.nextAvailable++;
+    }
+    state.used.add(gatePassNo);
+    state.nextAvailable = Math.max(state.nextAvailable, gatePassNo + 1);
+
+    singlePayloads.push({
+      farmerStorageLinkId: item.pass.farmerStorageLinkId,
+      gatePassNo,
+      ...(item.pass.manualGatePassNumber !== undefined && {
+        manualGatePassNumber: item.pass.manualGatePassNumber,
+      }),
+      date: item.pass.date,
+      variety: item.pass.variety,
+      from: item.pass.from,
+      toField: item.pass.toField,
+      gradingGatePasses: [item.gradingGatePass],
+      ...(item.pass.remarks !== undefined && { remarks: item.pass.remarks }),
+      // Omit idempotencyKey when expanding so each nikasi is independent
+    });
+  }
+
+  return singlePayloads;
+}
+
+/**
  * Creates multiple nikasi gate passes in a single transaction.
+ * One nikasi gate pass is created per grading gate pass (expanded from the bulk payload).
  * If any pass fails validation or DB rules, the entire operation is rolled back.
- * Gate pass numbers must be unique per cold storage (within request and in DB).
+ * Gate pass numbers are unique per cold storage (reused from pass for first GGP, then next available).
  */
 export async function createNikasiGatePassBulk(
   payload: CreateBulkNikasiGatePassBody,
@@ -625,35 +733,63 @@ export async function createNikasiGatePassBulk(
 
   try {
     const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-    const seenKeys = new Set<string>();
+    const linkIds = [
+      ...new Set(
+        passes.map((p) =>
+          typeof p.farmerStorageLinkId === 'string'
+            ? p.farmerStorageLinkId
+            : (p.farmerStorageLinkId as Types.ObjectId).toString()
+        )
+      ),
+    ].map((id) => new Types.ObjectId(id));
 
-    for (const pass of passes) {
-      const link = await FarmerStorageLink.findById(pass.farmerStorageLinkId)
-        .session(session)
-        .lean();
-      const coldStorageId = (
-        link as { coldStorageId?: mongoose.Types.ObjectId }
-      )?.coldStorageId;
-      if (!coldStorageId) {
+    const links = await FarmerStorageLink.find({ _id: { $in: linkIds } })
+      .session(session)
+      .lean();
+
+    const linkIdToColdStorage = new Map<string, string>();
+    const coldStorageToLinkIds = new Map<string, Types.ObjectId[]>();
+
+    for (const link of links) {
+      const l = link as { _id: Types.ObjectId; coldStorageId?: Types.ObjectId };
+      if (!l.coldStorageId) {
         throw new NotFoundError(
           'Farmer storage link not found',
           'FARMER_STORAGE_LINK_NOT_FOUND'
         );
       }
-      const key = `${coldStorageId.toString()}:${pass.gatePassNo}`;
-      if (seenKeys.has(key)) {
-        throw new ValidationError(
-          `Duplicate gate pass number ${pass.gatePassNo} for the same cold storage in bulk request`,
-          'DUPLICATE_GATE_PASS_NUMBER_IN_BULK'
-        );
-      }
-      seenKeys.add(key);
+      const lid = l._id.toString();
+      const cid = l.coldStorageId.toString();
+      linkIdToColdStorage.set(lid, cid);
+      const arr = coldStorageToLinkIds.get(cid) ?? [];
+      arr.push(l._id);
+      coldStorageToLinkIds.set(cid, arr);
     }
 
-    const results: INikasiGatePass[] = [];
     for (const pass of passes) {
+      const lid =
+        typeof pass.farmerStorageLinkId === 'string'
+          ? pass.farmerStorageLinkId
+          : (pass.farmerStorageLinkId as Types.ObjectId).toString();
+      if (!linkIdToColdStorage.has(lid)) {
+        throw new NotFoundError(
+          'Farmer storage link not found',
+          'FARMER_STORAGE_LINK_NOT_FOUND'
+        );
+      }
+    }
+
+    const singlePayloads = await expandBulkToSinglePayloads(
+      passes,
+      linkIdToColdStorage,
+      coldStorageToLinkIds,
+      session
+    );
+
+    const results: INikasiGatePass[] = [];
+    for (const singlePayload of singlePayloads) {
       const result = await createOneNikasiGatePassWithSession(
-        pass,
+        singlePayload,
         session,
         createdBy,
         logger
