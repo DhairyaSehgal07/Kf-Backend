@@ -160,3 +160,8 @@ export const getGradingGatePassesByFarmerStorageLinkSchema = z.object({
 export type GetGradingGatePassesByFarmerStorageLinkParams = z.infer<
   typeof getGradingGatePassesByFarmerStorageLinkSchema
 >['params'];
+
+/** Schema for GET / - no params/body; uses authenticated user's store (cold storage) */
+export const getGradingGatePassesByStoreSchema = z.object({
+  querystring: z.object({}).optional(),
+});

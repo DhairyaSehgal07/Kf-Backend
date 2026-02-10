@@ -9,6 +9,7 @@ import {
   createGradingGatePassSchema,
   updateGradingGatePassSchema,
   getGradingGatePassesByFarmerStorageLinkSchema,
+  getGradingGatePassesByStoreSchema,
 } from './grading-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
@@ -91,15 +92,16 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
     createGradingGatePassHandler as never
   );
 
-  // Get all grading gate passes for authenticated user's cold storage
+  // Get all grading gate passes for the current logged-in store (cold storage)
   fastify.get(
     '/',
     {
       schema: {
+        ...getGradingGatePassesByStoreSchema,
         description:
-          "Get all grading gate passes for the authenticated store admin's cold storage",
+          "Get all grading gate passes for the current logged-in store (authenticated store admin's cold storage)",
         tags: ['Grading Gate Pass'],
-        summary: 'Get grading gate passes for my cold storage',
+        summary: 'Get all gate passes for current store',
         response: {
           200: {
             description: 'List of grading gate passes',

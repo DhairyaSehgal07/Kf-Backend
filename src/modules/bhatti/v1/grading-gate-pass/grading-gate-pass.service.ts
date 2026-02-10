@@ -471,6 +471,8 @@ export async function getGradingGatePassesByColdStorage(
     })
       .populate({
         path: 'incomingGatePassId',
+        select:
+          'truckNumber gatePassNo manualGatePassNumber date variety farmerStorageLinkId bagsReceived weightSlip status gradingSummary remarks createdAt updatedAt',
         populate: {
           path: 'farmerStorageLinkId',
           populate: [
@@ -535,6 +537,8 @@ export async function getGradingGatePassesByFarmerStorageLink(
     })
       .populate({
         path: 'incomingGatePassId',
+        select:
+          'truckNumber gatePassNo manualGatePassNumber date variety farmerStorageLinkId bagsReceived weightSlip status gradingSummary remarks createdAt updatedAt',
         populate: {
           path: 'farmerStorageLinkId',
           populate: [

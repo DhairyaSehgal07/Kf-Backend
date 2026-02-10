@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-02-10
+
+### Added
+
+- **Nikasi Gate Pass – Bulk create**
+  - POST `/api/bhatti/v1/nikasi-gate-pass/bulk` to create multiple nikasi gate passes in one request
+  - All passes created in a single transaction; any failure rolls back everything
+  - Gate pass numbers must be unique per cold storage (within request and in DB)
+  - Schema `createBulkNikasiGatePassSchema` and handler `createNikasiGatePassBulkHandler` with 201/400/404/409 responses and rate limit 30/min
+
+### Changed
+
+- **Grading Gate Pass**
+  - GET `/` (list by cold storage) now uses `getGradingGatePassesByStoreSchema` for querystring validation; description/summary updated to "current logged-in store"
+  - `getGradingGatePassesByColdStorage` and `getGradingGatePassesByFarmerStorageLink` populate incoming gate pass with explicit `select` (truckNumber, gatePassNo, manualGatePassNumber, date, variety, farmerStorageLinkId, bagsReceived, weightSlip, status, gradingSummary, remarks, createdAt, updatedAt)
+
+- **Nikasi Gate Pass Service**
+  - Refactored single create into `createOneNikasiGatePassWithSession`; single create and new bulk create both use it within a transaction
+  - Bulk create validates duplicate gate pass numbers per cold storage within the request before creating
+
 ## [1.6.3] - 2026-02-04
 
 ### Changed

@@ -82,3 +82,19 @@ export const createNikasiGatePassSchema = z.object({
 export type CreateNikasiGatePassBody = z.infer<
   typeof createNikasiGatePassSchema
 >['body'];
+
+/* =======================
+   Bulk create
+======================= */
+
+export const createBulkNikasiGatePassSchema = z.object({
+  body: z.object({
+    passes: z
+      .array(createNikasiGatePassSchema.shape.body)
+      .min(1, 'At least one pass is required'),
+  }),
+});
+
+export type CreateBulkNikasiGatePassBody = z.infer<
+  typeof createBulkNikasiGatePassSchema
+>['body'];

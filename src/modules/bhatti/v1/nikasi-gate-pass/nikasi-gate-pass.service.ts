@@ -3,7 +3,10 @@ import type { FastifyBaseLogger } from 'fastify';
 import { NikasiGatePass } from './nikasi-gate-pass.model.js';
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model.js';
-import type { CreateNikasiGatePassBody } from './nikasi-gate-pass.schema.js';
+import type {
+  CreateNikasiGatePassBody,
+  CreateBulkNikasiGatePassBody,
+} from './nikasi-gate-pass.schema.js';
 import {
   ConflictError,
   NotFoundError,
@@ -424,7 +427,157 @@ function handleNikasiServiceError(
 }
 
 /* =======================
-   CREATE NIKASI GATE PASS (with session)
+   CREATE ONE NIKASI GATE PASS (within existing session)
+======================= */
+
+/**
+ * Creates a single nikasi gate pass using the provided session.
+ * Caller is responsible for transaction start/commit/abort and session lifecycle.
+ */
+async function createOneNikasiGatePassWithSession(
+  payload: CreateNikasiGatePassBody,
+  session: ClientSession,
+  createdBy: string | undefined,
+  logger?: FastifyBaseLogger
+): Promise<INikasiGatePass> {
+  const {
+    gatePassNo,
+    manualGatePassNumber,
+    date,
+    variety,
+    from,
+    toField,
+    remarks,
+    idempotencyKey,
+    farmerStorageLinkId,
+  } = payload;
+
+  if (idempotencyKey) {
+    const existing = await NikasiGatePass.findOne({ idempotencyKey })
+      .session(session)
+      .lean();
+    if (existing) {
+      logger?.info(
+        { idempotencyKey, nikasiGatePassId: existing._id },
+        'Idempotency: returning existing nikasi gate pass'
+      );
+      return existing as INikasiGatePass;
+    }
+  }
+
+  // Voucher must be unique per cold storage
+  const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+  const link = await FarmerStorageLink.findById(farmerStorageLinkId)
+    .session(session)
+    .lean();
+  const coldStorageId = (link as { coldStorageId?: mongoose.Types.ObjectId })
+    ?.coldStorageId;
+  if (!coldStorageId) {
+    throw new NotFoundError(
+      'Farmer storage link not found',
+      'FARMER_STORAGE_LINK_NOT_FOUND'
+    );
+  }
+  const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
+    coldStorageId,
+  })
+    .session(session)
+    .distinct('_id')
+    .lean();
+
+  const existingByGatePassNo = await NikasiGatePass.findOne({
+    gatePassNo,
+    farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
+  })
+    .session(session)
+    .lean();
+  if (existingByGatePassNo) {
+    throw new ConflictError(
+      `Gate pass number ${gatePassNo} already exists for this cold storage`,
+      'GATE_PASS_NUMBER_EXISTS'
+    );
+  }
+
+  const validated = validateNikasiGatePassInput(payload, logger);
+
+  const gradingPassMap = await fetchAndValidateGradingGatePassesForNikasi(
+    payload,
+    validated,
+    session,
+    logger
+  );
+
+  const bulkOps = prepareBulkOperationsForNikasi(validated, gradingPassMap);
+  if (bulkOps.length === 0) {
+    throw new ValidationError(
+      'No allocations to apply',
+      'INVALID_ALLOCATION_QUANTITY'
+    );
+  }
+
+  const updateResult = await GradingGatePass.bulkWrite(
+    bulkOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
+    { session }
+  );
+
+  if (updateResult.modifiedCount !== bulkOps.length) {
+    throw new ConflictError(
+      `Expected ${bulkOps.length} updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
+      'CONCURRENT_MODIFICATION'
+    );
+  }
+
+  const statusOps = buildAllocationStatusUpdatesForNikasi(
+    validated,
+    gradingPassMap
+  );
+  if (statusOps.length > 0) {
+    await GradingGatePass.bulkWrite(
+      statusOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
+      { session }
+    );
+  }
+
+  const orderDetails = buildNikasiOrderDetails(validated, gradingPassMap);
+  const gradingGatePassSnapshots = buildGradingGatePassSnapshotsForNikasi(
+    validated,
+    gradingPassMap
+  );
+
+  const nikasiGatePass = new NikasiGatePass({
+    farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
+    ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
+    gatePassNo,
+    ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
+    gradingGatePassIds: validated.map(
+      (v) => new Types.ObjectId(v.gradingGatePassId)
+    ),
+    gradingGatePassSnapshots,
+    date,
+    variety,
+    from,
+    toField,
+    orderDetails,
+    remarks: remarks ?? undefined,
+    ...(idempotencyKey && { idempotencyKey }),
+  });
+
+  await nikasiGatePass.save({ session });
+
+  logger?.info(
+    {
+      nikasiGatePassId: nikasiGatePass._id,
+      gatePassNo: nikasiGatePass.gatePassNo,
+      gradingGatePassIds: nikasiGatePass.gradingGatePassIds,
+    },
+    'Nikasi gate pass created'
+  );
+
+  return nikasiGatePass as INikasiGatePass;
+}
+
+/* =======================
+   CREATE NIKASI GATE PASS (single)
 ======================= */
 
 export async function createNikasiGatePass(
@@ -436,142 +589,83 @@ export async function createNikasiGatePass(
   session.startTransaction();
 
   try {
-    const {
-      gatePassNo,
-      manualGatePassNumber,
-      date,
-      variety,
-      from,
-      toField,
-      remarks,
-      idempotencyKey,
-      farmerStorageLinkId,
-    } = payload;
-
-    if (idempotencyKey) {
-      const existing = await NikasiGatePass.findOne({ idempotencyKey })
-        .session(session)
-        .lean();
-      if (existing) {
-        logger?.info(
-          { idempotencyKey, nikasiGatePassId: existing._id },
-          'Idempotency: returning existing nikasi gate pass'
-        );
-        return existing as INikasiGatePass;
-      }
-    }
-
-    // Voucher must be unique per cold storage
-    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-    const link = await FarmerStorageLink.findById(farmerStorageLinkId)
-      .session(session)
-      .lean();
-    const coldStorageId = (link as { coldStorageId?: mongoose.Types.ObjectId })
-      ?.coldStorageId;
-    if (!coldStorageId) {
-      throw new NotFoundError(
-        'Farmer storage link not found',
-        'FARMER_STORAGE_LINK_NOT_FOUND'
-      );
-    }
-    const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
-      coldStorageId,
-    })
-      .session(session)
-      .distinct('_id')
-      .lean();
-
-    const existingByGatePassNo = await NikasiGatePass.findOne({
-      gatePassNo,
-      farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
-    })
-      .session(session)
-      .lean();
-    if (existingByGatePassNo) {
-      throw new ConflictError(
-        `Gate pass number ${gatePassNo} already exists for this cold storage`,
-        'GATE_PASS_NUMBER_EXISTS'
-      );
-    }
-
-    const validated = validateNikasiGatePassInput(payload, logger);
-
-    const gradingPassMap = await fetchAndValidateGradingGatePassesForNikasi(
+    const result = await createOneNikasiGatePassWithSession(
       payload,
-      validated,
       session,
+      createdBy,
       logger
     );
+    await session.commitTransaction();
+    return result;
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    handleNikasiServiceError(error, logger);
+  } finally {
+    session.endSession();
+  }
+}
 
-    const bulkOps = prepareBulkOperationsForNikasi(validated, gradingPassMap);
-    if (bulkOps.length === 0) {
-      throw new ValidationError(
-        'No allocations to apply',
-        'INVALID_ALLOCATION_QUANTITY'
-      );
+/* =======================
+   CREATE NIKASI GATE PASS (bulk)
+======================= */
+
+/**
+ * Creates multiple nikasi gate passes in a single transaction.
+ * If any pass fails validation or DB rules, the entire operation is rolled back.
+ * Gate pass numbers must be unique per cold storage (within request and in DB).
+ */
+export async function createNikasiGatePassBulk(
+  payload: CreateBulkNikasiGatePassBody,
+  logger?: FastifyBaseLogger,
+  createdBy?: string
+): Promise<INikasiGatePass[]> {
+  const { passes } = payload;
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const seenKeys = new Set<string>();
+
+    for (const pass of passes) {
+      const link = await FarmerStorageLink.findById(pass.farmerStorageLinkId)
+        .session(session)
+        .lean();
+      const coldStorageId = (
+        link as { coldStorageId?: mongoose.Types.ObjectId }
+      )?.coldStorageId;
+      if (!coldStorageId) {
+        throw new NotFoundError(
+          'Farmer storage link not found',
+          'FARMER_STORAGE_LINK_NOT_FOUND'
+        );
+      }
+      const key = `${coldStorageId.toString()}:${pass.gatePassNo}`;
+      if (seenKeys.has(key)) {
+        throw new ValidationError(
+          `Duplicate gate pass number ${pass.gatePassNo} for the same cold storage in bulk request`,
+          'DUPLICATE_GATE_PASS_NUMBER_IN_BULK'
+        );
+      }
+      seenKeys.add(key);
     }
 
-    const updateResult = await GradingGatePass.bulkWrite(
-      bulkOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
-      { session }
-    );
-
-    if (updateResult.modifiedCount !== bulkOps.length) {
-      throw new ConflictError(
-        `Expected ${bulkOps.length} updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
-        'CONCURRENT_MODIFICATION'
+    const results: INikasiGatePass[] = [];
+    for (const pass of passes) {
+      const result = await createOneNikasiGatePassWithSession(
+        pass,
+        session,
+        createdBy,
+        logger
       );
+      results.push(result);
     }
-
-    const statusOps = buildAllocationStatusUpdatesForNikasi(
-      validated,
-      gradingPassMap
-    );
-    if (statusOps.length > 0) {
-      await GradingGatePass.bulkWrite(
-        statusOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
-        { session }
-      );
-    }
-
-    const orderDetails = buildNikasiOrderDetails(validated, gradingPassMap);
-    const gradingGatePassSnapshots = buildGradingGatePassSnapshotsForNikasi(
-      validated,
-      gradingPassMap
-    );
-
-    const nikasiGatePass = new NikasiGatePass({
-      farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
-      ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
-      gatePassNo,
-      ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
-      gradingGatePassIds: validated.map(
-        (v) => new Types.ObjectId(v.gradingGatePassId)
-      ),
-      gradingGatePassSnapshots,
-      date,
-      variety,
-      from,
-      toField,
-      orderDetails,
-      remarks: remarks ?? undefined,
-      ...(idempotencyKey && { idempotencyKey }),
-    });
-
-    await nikasiGatePass.save({ session });
 
     await session.commitTransaction();
 
-    logger?.info(
-      {
-        nikasiGatePassId: nikasiGatePass._id,
-        gatePassNo: nikasiGatePass.gatePassNo,
-        gradingGatePassIds: nikasiGatePass.gradingGatePassIds,
-      },
-      'Nikasi gate pass created'
-    );
+    logger?.info({ count: results.length }, 'Bulk nikasi gate passes created');
 
-    return nikasiGatePass as INikasiGatePass;
+    return results;
   } catch (error) {
     await session.abortTransaction().catch(() => {});
     handleNikasiServiceError(error, logger);
