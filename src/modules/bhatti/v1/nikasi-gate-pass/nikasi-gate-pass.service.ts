@@ -98,7 +98,7 @@ function validateNikasiGatePassInput(
 ======================= */
 
 async function fetchAndValidateGradingGatePassesForNikasi(
-  payload: CreateNikasiGatePassBody,
+  _payload: CreateNikasiGatePassBody,
   validated: NikasiGradingPassWithFilteredAllocations[],
   session: ClientSession,
   _logger?: FastifyBaseLogger
