@@ -31,6 +31,7 @@ interface NikasiValidatedAllocation {
 
 interface NikasiGradingPassWithFilteredAllocations {
   gradingGatePassId: string;
+  variety: string;
   allocations: NikasiValidatedAllocation[];
 }
 
@@ -80,6 +81,7 @@ function validateNikasiGatePassInput(
 
     result.push({
       gradingGatePassId: gp.gradingGatePassId,
+      variety: gp.variety.trim(),
       allocations: nonZeroAllocations.map((a) => ({
         gradingGatePassId: gp.gradingGatePassId,
         size: a.size,
@@ -133,12 +135,12 @@ async function fetchAndValidateGradingGatePassesForNikasi(
     gradingPassMap.set(g._id.toString(), g);
   }
 
-  const expectedVariety = payload.variety.trim();
-
+  // Validate each grading gate pass document's variety matches the payload variety for that GGP
   for (const item of validated) {
     const gradingPass = gradingPassMap.get(item.gradingGatePassId);
     if (!gradingPass) continue;
 
+    const expectedVariety = item.variety;
     const gpVariety = (gradingPass as { variety: string }).variety?.trim();
     if (gpVariety !== expectedVariety) {
       throw new ValidationError(
@@ -146,6 +148,23 @@ async function fetchAndValidateGradingGatePassesForNikasi(
         'VARIETY_MISMATCH'
       );
     }
+  }
+
+  // When one nikasi references multiple GGPs, all must have the same variety
+  if (validated.length > 1) {
+    const firstVariety = validated[0].variety;
+    const mismatch = validated.find((item) => item.variety !== firstVariety);
+    if (mismatch) {
+      throw new ValidationError(
+        `When creating one nikasi for multiple grading gate passes, all must have the same variety; got "${firstVariety}" and "${mismatch.variety}"`,
+        'VARIETY_MISMATCH'
+      );
+    }
+  }
+
+  for (const item of validated) {
+    const gradingPass = gradingPassMap.get(item.gradingGatePassId);
+    if (!gradingPass) continue;
 
     const orderDetails = (
       gradingPass as {
@@ -444,7 +463,7 @@ async function createOneNikasiGatePassWithSession(
     gatePassNo,
     manualGatePassNumber,
     date,
-    variety,
+    variety: _variety,
     from,
     toField,
     remarks,
@@ -544,6 +563,12 @@ async function createOneNikasiGatePassWithSession(
     gradingPassMap
   );
 
+  // Use per-GGP variety from payload (validated); fallback to top-level variety when multiple GGPs
+  const effectiveVariety =
+    validated.length === 1
+      ? validated[0].variety
+      : (payload.variety?.trim() ?? validated[0]?.variety ?? '');
+
   const nikasiGatePass = new NikasiGatePass({
     farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
     ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
@@ -554,7 +579,7 @@ async function createOneNikasiGatePassWithSession(
     ),
     gradingGatePassSnapshots,
     date,
-    variety,
+    variety: effectiveVariety,
     from,
     toField,
     orderDetails,
@@ -704,12 +729,12 @@ async function expandBulkToSinglePayloads(
         manualGatePassNumber: item.pass.manualGatePassNumber,
       }),
       date: item.pass.date,
-      variety: item.pass.variety,
       from: item.pass.from,
       toField: item.pass.toField,
       gradingGatePasses: [item.gradingGatePass],
       ...(item.pass.remarks !== undefined && { remarks: item.pass.remarks }),
       // Omit idempotencyKey when expanding so each nikasi is independent
+      // Variety comes from the grading gate pass entry (item.gradingGatePass.variety) and is on the single GGP in gradingGatePasses
     });
   }
 
