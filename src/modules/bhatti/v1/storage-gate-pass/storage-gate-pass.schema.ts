@@ -105,6 +105,22 @@ export const createStorageGatePassSchema = z.object({
   body: singleStorageGatePassCreateSchema,
 });
 
+/* =======================
+   Bulk create (gatePassNo in payload = starting number; server increments from there per cold storage)
+======================= */
+
+export const createBulkStorageGatePassSchema = z.object({
+  body: z.object({
+    passes: z
+      .array(singleStorageGatePassCreateSchema)
+      .min(1, 'At least one pass is required'),
+  }),
+});
+
+export type CreateBulkStorageGatePassBody = z.infer<
+  typeof createBulkStorageGatePassSchema
+>['body'];
+
 export const updateStorageGatePassSchema = z.object({
   params: z.object({
     id: z

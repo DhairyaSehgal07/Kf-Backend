@@ -1,11 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import {
   createStorageGatePassHandler,
+  createStorageGatePassBulkHandler,
   updateStorageGatePassHandler,
   getStorageGatePassesByColdStorageHandler,
 } from './storage-gate-pass.controller.js';
 import {
   createStorageGatePassSchema,
+  createBulkStorageGatePassSchema,
   updateStorageGatePassSchema,
 } from './storage-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
@@ -87,6 +89,72 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createStorageGatePassHandler as never
+  );
+
+  // Bulk create storage gate passes (transactional; rollback on any failure; one storage gate pass per grading gate pass)
+  fastify.post(
+    '/bulk',
+    {
+      schema: {
+        ...createBulkStorageGatePassSchema,
+        description:
+          'Create multiple storage gate passes in one request. For each grading gate pass in the payload there is one storage gate pass created. Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each new pass. All created in a single transaction; if any pass fails validation or DB rules, everything is rolled back.',
+        tags: ['Storage Gate Pass'],
+        summary: 'Bulk create storage gate passes',
+        response: {
+          201: {
+            description: 'Storage gate passes created successfully',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              message: { type: 'string' },
+              data: {
+                type: 'array',
+                items: { type: 'object', additionalProperties: true },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request / validation error',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          404: {
+            description: 'Farmer storage link or grading gate pass not found',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          409: {
+            description: 'Conflict - gate pass number already exists',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    createStorageGatePassBulkHandler as never
   );
 
   // Get all storage gate passes for authenticated user's cold storage

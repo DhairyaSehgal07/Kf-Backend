@@ -8,6 +8,7 @@ import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   CreateStorageGatePassInput,
   CreateStorageGatePassBody,
+  CreateBulkStorageGatePassBody,
   UpdateStorageGatePassInput,
 } from './storage-gate-pass.schema.js';
 import {
@@ -690,6 +691,169 @@ export async function createStorageGatePass(
       'Storage gate pass created'
     );
     return result;
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    handleServiceError(error, logger);
+  } finally {
+    session.endSession();
+  }
+}
+
+/* =======================
+   BULK CREATE STORAGE GATE PASSES (transactional; one storage gate pass per grading gate pass)
+======================= */
+
+/**
+ * Expands bulk payload into one CreateStorageGatePassInput per grading gate pass.
+ * For each grading gate pass in the request there will be one storage gate pass.
+ * Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each created pass.
+ */
+async function expandBulkToSinglePayloads(
+  passes: CreateStorageGatePassInput[],
+  linkIdToColdStorage: Map<string, string>,
+  _farmerStorageLinkIdsByColdStorage: Map<string, Types.ObjectId[]>,
+  _session: ClientSession
+): Promise<CreateStorageGatePassInput[]> {
+  const flattened: Array<{
+    pass: CreateStorageGatePassInput;
+    gradingGatePass: CreateStorageGatePassInput['gradingGatePasses'][number];
+  }> = [];
+  for (const pass of passes) {
+    for (const gp of pass.gradingGatePasses) {
+      flattened.push({ pass, gradingGatePass: gp });
+    }
+  }
+
+  /** Per cold storage: next gate pass number to assign. Initialized from payload gatePassNo when first seen, then incremented. */
+  const coldStorageState = new Map<
+    string,
+    {
+      nextAvailable: number;
+    }
+  >();
+
+  const singlePayloads: CreateStorageGatePassInput[] = [];
+
+  for (const item of flattened) {
+    const lid =
+      typeof item.pass.farmerStorageLinkId === 'string'
+        ? item.pass.farmerStorageLinkId
+        : (item.pass.farmerStorageLinkId as Types.ObjectId).toString();
+    const coldStorageId = linkIdToColdStorage.get(lid);
+    if (!coldStorageId) continue;
+
+    let state = coldStorageState.get(coldStorageId);
+    if (!state) {
+      state = { nextAvailable: item.pass.gatePassNo };
+      coldStorageState.set(coldStorageId, state);
+    }
+    const gatePassNo = state.nextAvailable++;
+
+    singlePayloads.push({
+      farmerStorageLinkId: item.pass.farmerStorageLinkId,
+      gatePassNo,
+      ...(item.pass.manualGatePassNumber !== undefined && {
+        manualGatePassNumber: item.pass.manualGatePassNumber,
+      }),
+      date: item.pass.date,
+      variety: item.pass.variety,
+      gradingGatePasses: [item.gradingGatePass],
+      ...(item.pass.remarks !== undefined && { remarks: item.pass.remarks }),
+    });
+  }
+
+  return singlePayloads;
+}
+
+/**
+ * Creates multiple storage gate passes in a single transaction.
+ * One storage gate pass is created per grading gate pass (expanded from the bulk payload).
+ * Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each new pass.
+ * If any pass fails validation or DB rules, the entire operation is rolled back.
+ */
+export async function createStorageGatePassBulk(
+  payload: CreateBulkStorageGatePassBody,
+  logger?: FastifyBaseLogger,
+  createdBy?: string
+): Promise<IStorageGatePass[]> {
+  const { passes } = payload;
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const linkIds = [
+      ...new Set(
+        passes.map((p) =>
+          typeof p.farmerStorageLinkId === 'string'
+            ? p.farmerStorageLinkId
+            : (p.farmerStorageLinkId as Types.ObjectId).toString()
+        )
+      ),
+    ].map((id) => new Types.ObjectId(id));
+
+    const links = await FarmerStorageLink.find({ _id: { $in: linkIds } })
+      .session(session)
+      .lean();
+
+    const linkIdToColdStorage = new Map<string, string>();
+    const farmerStorageLinkIdsByColdStorage = new Map<
+      string,
+      Types.ObjectId[]
+    >();
+
+    for (const link of links) {
+      const l = link as { _id: Types.ObjectId; coldStorageId?: Types.ObjectId };
+      if (!l.coldStorageId) {
+        throw new NotFoundError(
+          'Farmer storage link not found',
+          'FARMER_STORAGE_LINK_NOT_FOUND'
+        );
+      }
+      const lid = l._id.toString();
+      const cid = l.coldStorageId.toString();
+      linkIdToColdStorage.set(lid, cid);
+      const arr = farmerStorageLinkIdsByColdStorage.get(cid) ?? [];
+      arr.push(l._id);
+      farmerStorageLinkIdsByColdStorage.set(cid, arr);
+    }
+
+    for (const pass of passes) {
+      const lid =
+        typeof pass.farmerStorageLinkId === 'string'
+          ? pass.farmerStorageLinkId
+          : (pass.farmerStorageLinkId as Types.ObjectId).toString();
+      if (!linkIdToColdStorage.has(lid)) {
+        throw new NotFoundError(
+          'Farmer storage link not found',
+          'FARMER_STORAGE_LINK_NOT_FOUND'
+        );
+      }
+    }
+
+    const singlePayloads = await expandBulkToSinglePayloads(
+      passes as CreateStorageGatePassInput[],
+      linkIdToColdStorage,
+      farmerStorageLinkIdsByColdStorage,
+      session
+    );
+
+    const results: IStorageGatePass[] = [];
+    for (const singlePayload of singlePayloads) {
+      const result = await createSingleStorageGatePass(
+        singlePayload,
+        session,
+        logger,
+        createdBy
+      );
+      results.push(result);
+    }
+
+    await session.commitTransaction();
+
+    logger?.info({ count: results.length }, 'Bulk storage gate passes created');
+
+    return results;
   } catch (error) {
     await session.abortTransaction().catch(() => {});
     handleServiceError(error, logger);
