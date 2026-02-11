@@ -1,11 +1,13 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createStorageGatePass,
+  createStorageGatePassBulk,
   updateStorageGatePass,
   getStorageGatePassesByColdStorage,
 } from './storage-gate-pass.service.js';
 import {
   CreateStorageGatePassBody,
+  CreateBulkStorageGatePassBody,
   UpdateStorageGatePassInput,
   UpdateStorageGatePassParams,
 } from './storage-gate-pass.schema.js';
@@ -92,6 +94,92 @@ export async function createStorageGatePassHandler(
     }
 
     // Fallback for unexpected errors
+    const statusCode = 500;
+    return reply.code(statusCode).send({
+      status: 'error',
+      statusCode,
+      errorCode: 'INTERNAL_SERVER_ERROR',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred'
+          : 'An unexpected error occurred',
+    });
+  }
+}
+
+/**
+ * Handler for creating multiple storage gate passes in one request.
+ * For each grading gate pass in the payload, one storage gate pass is created.
+ * All passes are created in a single transaction; any failure rolls back everything.
+ */
+export async function createStorageGatePassBulkHandler(
+  request: FastifyRequest<{ Body: CreateBulkStorageGatePassBody }>,
+  reply: FastifyReply
+) {
+  try {
+    request.log.info(
+      {
+        passCount: request.body.passes?.length ?? 0,
+      },
+      'Create bulk storage gate pass request'
+    );
+
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const results = await createStorageGatePassBulk(
+      request.body,
+      request.log,
+      storeAdminId
+    );
+
+    return reply.code(201).send({
+      status: 'Success',
+      message: `${results.length} storage gate pass(es) created successfully.`,
+      data: results,
+    });
+  } catch (error) {
+    request.log.error(
+      { error, body: request.body },
+      'Error in createStorageGatePassBulkHandler'
+    );
+
+    if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
     const statusCode = 500;
     return reply.code(statusCode).send({
       status: 'error',

@@ -22,6 +22,11 @@ const nikasiGradingGatePassAllocationSchema = z.object({
       (val) => mongoose.Types.ObjectId.isValid(val),
       'Invalid grading gate pass ID format'
     ),
+  variety: z
+    .string()
+    .trim()
+    .min(1, 'Variety is required for each grading gate pass')
+    .max(100, 'Variety must not exceed 100 characters'),
   allocations: z
     .array(nikasiAllocationSchema)
     .min(1, 'At least one allocation is required'),
@@ -54,8 +59,8 @@ export const createNikasiGatePassSchema = z.object({
     variety: z
       .string()
       .trim()
-      .min(1, 'Variety is required')
-      .max(100, 'Variety must not exceed 100 characters'),
+      .max(100, 'Variety must not exceed 100 characters')
+      .optional(),
 
     from: z.string().trim().min(1, 'From is required').max(200),
     toField: z.string().trim().min(1, 'To is required').max(200),
