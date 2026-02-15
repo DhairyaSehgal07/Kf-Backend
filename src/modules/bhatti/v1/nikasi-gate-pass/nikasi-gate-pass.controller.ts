@@ -3,6 +3,7 @@ import {
   createNikasiGatePass,
   createNikasiGatePassBulk,
   getNikasiGatePassesByColdStorage,
+  getNikasiGatePassesByColdStorageGrouped,
 } from './nikasi-gate-pass.service.js';
 import {
   CreateNikasiGatePassBody,
@@ -226,6 +227,91 @@ export async function getNikasiGatePassesByColdStorageHandler(
     request.log.error(
       { error },
       'Error in getNikasiGatePassesByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving nikasi gate passes for the authenticated user's cold storage,
+ * grouped by manualGatePassNumber and date.
+ */
+export async function getNikasiGatePassesByColdStorageGroupedHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const grouped = await getNikasiGatePassesByColdStorageGrouped(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: grouped,
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getNikasiGatePassesByColdStorageGroupedHandler'
     );
 
     if (error instanceof UnauthorizedError) {

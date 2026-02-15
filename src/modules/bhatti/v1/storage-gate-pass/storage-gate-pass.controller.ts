@@ -4,6 +4,7 @@ import {
   createStorageGatePassBulk,
   updateStorageGatePass,
   getStorageGatePassesByColdStorage,
+  getStorageGatePassesByColdStorageGrouped,
 } from './storage-gate-pass.service.js';
 import {
   CreateStorageGatePassBody,
@@ -232,6 +233,91 @@ export async function getStorageGatePassesByColdStorageHandler(
     request.log.error(
       { error },
       'Error in getStorageGatePassesByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'Unknown error'
+            : 'Internal server error',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving storage gate passes for the authenticated user's cold storage,
+ * grouped by manualGatePassNumber and date.
+ */
+export async function getStorageGatePassesByColdStorageGroupedHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const grouped = await getStorageGatePassesByColdStorageGrouped(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: grouped,
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getStorageGatePassesByColdStorageGroupedHandler'
     );
 
     if (error instanceof UnauthorizedError) {

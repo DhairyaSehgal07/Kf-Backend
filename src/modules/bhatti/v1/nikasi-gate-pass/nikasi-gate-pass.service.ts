@@ -922,3 +922,67 @@ export async function getNikasiGatePassesByColdStorage(
     );
   }
 }
+
+/** Group key: manualGatePassNumber + date (YYYY-MM-DD) */
+export interface NikasiGatePassGroup {
+  manualGatePassNumber: number | null;
+  date: string;
+  passes: INikasiGatePass[];
+}
+
+/**
+ * Retrieves all nikasi gate passes for a cold storage, grouped by manualGatePassNumber and date.
+ * Sorted by manualGatePassNumber ascending, then date ascending.
+ * @param coldStorageId - Cold storage ID
+ * @param logger - Optional logger instance
+ * @returns Array of groups, each with manualGatePassNumber, date (YYYY-MM-DD), and passes
+ */
+export async function getNikasiGatePassesByColdStorageGrouped(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+): Promise<NikasiGatePassGroup[]> {
+  const nikasiGatePasses = await getNikasiGatePassesByColdStorage(
+    coldStorageId,
+    logger
+  );
+
+  // Group by the combination of (manualGatePassNumber, date): same manual no with different date = separate groups
+  const grouped = Object.groupBy(
+    nikasiGatePasses,
+    (pass: (typeof nikasiGatePasses)[number]) => {
+      const manual = pass.manualGatePassNumber ?? null;
+      const dateObj =
+        pass.date instanceof Date ? pass.date : new Date(pass.date);
+      const dateStr = dateObj.toISOString().slice(0, 10); // YYYY-MM-DD
+      return `${manual ?? 'null'}|${dateStr}`;
+    }
+  );
+
+  const groups: NikasiGatePassGroup[] = Object.entries(grouped).map(
+    ([key, passes]) => {
+      const [manualStr, dateStr] = key.split('|');
+      const manualGatePassNumber =
+        manualStr === 'null' ? null : Number(manualStr);
+      return {
+        manualGatePassNumber,
+        date: dateStr,
+        passes: (passes ?? []) as INikasiGatePass[],
+      };
+    }
+  );
+
+  groups.sort((a, b) => {
+    const aNum = a.manualGatePassNumber ?? -1;
+    const bNum = b.manualGatePassNumber ?? -1;
+    const manualCmp = aNum - bNum;
+    if (manualCmp !== 0) return manualCmp;
+    return a.date.localeCompare(b.date);
+  });
+
+  logger?.info(
+    { coldStorageId, groupCount: groups.length },
+    'Retrieved nikasi gate passes by cold storage (grouped)'
+  );
+
+  return groups;
+}

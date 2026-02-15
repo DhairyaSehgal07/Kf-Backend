@@ -4,6 +4,7 @@ import {
   createStorageGatePassBulkHandler,
   updateStorageGatePassHandler,
   getStorageGatePassesByColdStorageHandler,
+  getStorageGatePassesByColdStorageGroupedHandler,
 } from './storage-gate-pass.controller.js';
 import {
   createStorageGatePassSchema,
@@ -206,6 +207,71 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getStorageGatePassesByColdStorageHandler as never
+  );
+
+  // Get all storage gate passes for cold storage, grouped by manualGatePassNumber and date
+  fastify.get(
+    '/grouped',
+    {
+      schema: {
+        description:
+          "Get all storage gate passes for the authenticated store admin's cold storage, grouped by manualGatePassNumber and date",
+        tags: ['Storage Gate Pass'],
+        summary: 'Get storage gate passes for my cold storage (grouped)',
+        response: {
+          200: {
+            description:
+              'Storage gate passes grouped by manualGatePassNumber and date',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    manualGatePassNumber: {
+                      type: ['number', 'null'],
+                      description: 'Manual gate pass number (null if not set)',
+                    },
+                    date: {
+                      type: 'string',
+                      description: 'Date in YYYY-MM-DD format',
+                    },
+                    passes: {
+                      type: 'array',
+                      items: { type: 'object', additionalProperties: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getStorageGatePassesByColdStorageGroupedHandler as never
   );
 
   // Update storage gate pass
