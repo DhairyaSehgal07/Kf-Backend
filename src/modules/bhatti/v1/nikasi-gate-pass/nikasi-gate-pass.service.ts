@@ -947,16 +947,17 @@ export async function getNikasiGatePassesByColdStorageGrouped(
   );
 
   // Group by the combination of (manualGatePassNumber, date): same manual no with different date = separate groups
-  const grouped = Object.groupBy(
-    nikasiGatePasses,
-    (pass: (typeof nikasiGatePasses)[number]) => {
-      const manual = pass.manualGatePassNumber ?? null;
-      const dateObj =
-        pass.date instanceof Date ? pass.date : new Date(pass.date);
-      const dateStr = dateObj.toISOString().slice(0, 10); // YYYY-MM-DD
-      return `${manual ?? 'null'}|${dateStr}`;
-    }
-  );
+  const grouped = nikasiGatePasses.reduce<
+    Record<string, (typeof nikasiGatePasses)[number][]>
+  >((acc, pass) => {
+    const manual = pass.manualGatePassNumber ?? null;
+    const dateObj = pass.date instanceof Date ? pass.date : new Date(pass.date);
+    const dateStr = dateObj.toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = `${manual ?? 'null'}|${dateStr}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(pass);
+    return acc;
+  }, {});
 
   const groups: NikasiGatePassGroup[] = Object.entries(grouped).map(
     ([key, passes]) => {
