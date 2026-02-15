@@ -70,6 +70,8 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
                     },
                   },
                   totalGradingWeight: { type: 'number' },
+                  totalBagsStored: { type: 'number' },
+                  totalBagsDispatched: { type: 'number' },
                 },
               },
             },

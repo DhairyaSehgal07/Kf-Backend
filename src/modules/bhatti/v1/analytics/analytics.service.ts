@@ -4,6 +4,8 @@ import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
+import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
+import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { ValidationError, AppError } from '../../../../utils/errors.js';
 
 /** Bag type tare weight in kg (weight of empty bag) */
@@ -27,6 +29,8 @@ export interface OverviewResult {
     currentQuantity: number;
   };
   totalGradingWeight: number;
+  totalBagsStored: number;
+  totalBagsDispatched: number;
 }
 
 /**
@@ -36,6 +40,8 @@ export interface OverviewResult {
  * - totalGradingBags: sum of initial and current quantities from grading order details
  * - totalGradingWeight: sum over grading lines of (quantity * (weightPerBagKg - bagTypeWeight)), JUTE=0.7kg, LENO=0.06kg
  * - totalUngradedBags / totalUngradedWeight: incoming vouchers that have no grading voucher associated (same weight formula as incoming)
+ * - totalBagsStored: sum of orderDetails[].initialQuantity across storage gate passes
+ * - totalBagsDispatched: sum of orderDetails[].quantityIssued across nikasi gate passes
  */
 export async function getOverview(
   coldStorageId: string,
@@ -66,6 +72,8 @@ export async function getOverview(
         totalUngradedWeight: 0,
         totalGradingBags: { initialQuantity: 0, currentQuantity: 0 },
         totalGradingWeight: 0,
+        totalBagsStored: 0,
+        totalBagsDispatched: 0,
       };
     }
 
@@ -104,6 +112,29 @@ export async function getOverview(
       (matchIncoming.date as Record<string, unknown>).$lte = end;
       matchGrading.date = matchGrading.date ?? {};
       (matchGrading.date as Record<string, unknown>).$lte = end;
+    }
+
+    const matchStorage: Record<string, unknown> = {
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    };
+    const matchNikasi: Record<string, unknown> = {
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    };
+    if (filters.dateFrom) {
+      const start = new Date(filters.dateFrom);
+      start.setUTCHours(0, 0, 0, 0);
+      matchStorage.date = matchStorage.date ?? {};
+      (matchStorage.date as Record<string, unknown>).$gte = start;
+      matchNikasi.date = matchNikasi.date ?? {};
+      (matchNikasi.date as Record<string, unknown>).$gte = start;
+    }
+    if (filters.dateTo) {
+      const end = new Date(filters.dateTo);
+      end.setUTCHours(23, 59, 59, 999);
+      matchStorage.date = matchStorage.date ?? {};
+      (matchStorage.date as Record<string, unknown>).$lte = end;
+      matchNikasi.date = matchNikasi.date ?? {};
+      (matchNikasi.date as Record<string, unknown>).$lte = end;
     }
 
     // Incoming: aggregate bagsReceived and net weight (gross - tare)
@@ -238,6 +269,38 @@ export async function getOverview(
 
     totalGradingWeight = Math.round(totalGradingWeight * 100) / 100;
 
+    // Storage gate pass: sum of orderDetails[].initialQuantity (bags stored)
+    const [storageAgg] = await StorageGatePass.aggregate<{
+      totalBagsStored: number;
+    }>([
+      { $match: matchStorage },
+      { $unwind: '$orderDetails' },
+      {
+        $group: {
+          _id: null,
+          totalBagsStored: { $sum: '$orderDetails.initialQuantity' },
+        },
+      },
+      { $project: { _id: 0, totalBagsStored: 1 } },
+    ]);
+    const totalBagsStored = storageAgg?.totalBagsStored ?? 0;
+
+    // Nikasi gate pass: sum of orderDetails[].quantityIssued (bags dispatched)
+    const [nikasiAgg] = await NikasiGatePass.aggregate<{
+      totalBagsDispatched: number;
+    }>([
+      { $match: matchNikasi },
+      { $unwind: '$orderDetails' },
+      {
+        $group: {
+          _id: null,
+          totalBagsDispatched: { $sum: '$orderDetails.quantityIssued' },
+        },
+      },
+      { $project: { _id: 0, totalBagsDispatched: 1 } },
+    ]);
+    const totalBagsDispatched = nikasiAgg?.totalBagsDispatched ?? 0;
+
     logger?.info(
       {
         coldStorageId,
@@ -251,6 +314,8 @@ export async function getOverview(
           currentQuantity: totalGradingCurrent,
         },
         totalGradingWeight,
+        totalBagsStored,
+        totalBagsDispatched,
       },
       'Analytics overview computed'
     );
@@ -265,6 +330,8 @@ export async function getOverview(
         currentQuantity: totalGradingCurrent,
       },
       totalGradingWeight,
+      totalBagsStored,
+      totalBagsDispatched,
     };
   } catch (error) {
     if (error instanceof ValidationError) throw error;
