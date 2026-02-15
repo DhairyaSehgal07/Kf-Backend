@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-15
+
+### Added
+
+- **Analytics Module**
+  - New analytics module with routes at `/api/v1/analytics`
+  - GET `/api/v1/analytics` – placeholder endpoint
+  - GET `/api/v1/analytics/overview` – authenticated overview aggregates for the logged-in store admin's cold storage
+  - Optional querystring: `dateFrom`, `dateTo` (YYYY-MM-DD) to filter by date range
+  - Returns: `totalIncomingBags`, `totalIncomingWeight`, `totalUngradedBags`, `totalUngradedWeight`, `totalGradingBags` (initialQuantity, currentQuantity), `totalGradingWeight`
+  - Analytics service scopes all data to cold storage and farmer-storage links; validates date format and cold storage ID
+
+### Changed
+
+- **Application**
+  - Registered analytics routes in `app.ts` at prefix `/api/v1/analytics`
+
 ## [1.6.4] - 2026-02-10
 
 ### Added

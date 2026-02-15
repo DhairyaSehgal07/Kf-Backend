@@ -13,6 +13,7 @@ import { gradingGatePassRoutes } from './modules/bhatti/v1/grading-gate-pass/gra
 import { storageGatePassRoutes } from './modules/bhatti/v1/storage-gate-pass/storage-gate-pass.routes.js';
 import { nikasiGatePassRoutes } from './modules/bhatti/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
 import { outgoingGatePassRoutes } from './modules/bhatti/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
+import { analyticsRoutes } from './modules/bhatti/v1/analytics/analytics.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -116,6 +117,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register outgoing gate pass routes
   await fastify.register(outgoingGatePassRoutes, {
     prefix: '/api/v1/outgoing-gate-pass',
+  });
+
+  // Register analytics routes
+  await fastify.register(analyticsRoutes, {
+    prefix: '/api/v1/analytics',
   });
 
   // Global error handler
