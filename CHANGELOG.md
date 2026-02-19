@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-02-19
+
+### Added
+
+- **Temperature Module (Kapur)**
+  - New temperature module under `src/modules/kapur/v1/temperature/` (model, service, controller, routes, schema).
+  - Temperature routes registered at `/api/v1/temperature`.
+  - Create temperature records (chamber, runningTemperature, date) and update by ID with authentication and rate limiting.
+
+### Changed
+
+- **Application**
+  - `app.ts` updated to register temperature routes at prefix `/api/v1/temperature`.
+
+---
+
 ## [1.9.0] - 2026-02-19
 
 ### Notice

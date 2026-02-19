@@ -14,6 +14,7 @@ import { storageGatePassRoutes } from './modules/kapur/v1/storage-gate-pass/stor
 import { nikasiGatePassRoutes } from './modules/kapur/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
 import { outgoingGatePassRoutes } from './modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
 import { analyticsRoutes } from './modules/kapur/v1/analytics/analytics.routes.js';
+import { temperatureRoutes } from './modules/kapur/v1/temperature/temperature.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -122,6 +123,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register analytics routes
   await fastify.register(analyticsRoutes, {
     prefix: '/api/v1/analytics',
+  });
+
+  // Register temperature routes
+  await fastify.register(temperatureRoutes, {
+    prefix: '/api/v1/temperature',
   });
 
   // Global error handler
