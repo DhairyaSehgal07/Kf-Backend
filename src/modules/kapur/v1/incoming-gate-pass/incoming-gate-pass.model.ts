@@ -10,6 +10,15 @@ export enum GatePassStatus {
   FULLY_GRADED = 'FULLY_GRADED',
 }
 
+export enum IncomingGatePassCategory {
+  OWN_STOCK = 'Own Stock',
+  CONTRACT_FARMING = 'Contract Farming',
+  FAZALPUR = 'Fazalpur',
+  PURCHASES_APR = 'Purchases-Apr',
+  CONVERSION = 'Conversion',
+  TRANSFER_FROM_STORES = 'Transfer From Stores',
+}
+
 /* =======================
    INTERFACES
 ======================= */
@@ -33,6 +42,7 @@ export interface IIncomingGatePass extends Document {
   date: Date;
 
   variety: string;
+  category: IncomingGatePassCategory;
   truckNumber: string;
 
   bagsReceived: number;
@@ -107,6 +117,13 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       type: String,
       required: true,
       trim: true,
+    },
+
+    category: {
+      type: String,
+      enum: Object.values(IncomingGatePassCategory),
+      required: true,
+      index: true,
     },
 
     truckNumber: {

@@ -6,14 +6,14 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { config } from 'dotenv';
 import { AppError } from './utils/errors.js';
-import { coldStorageRoutes } from './modules/bhatti/v1/cold-storage/cold-storage.routes.js';
-import { storeAdminRoutes } from './modules/bhatti/v1/store-admin/store-admin.routes.js';
-import { incomingGatePassRoutes } from './modules/bhatti/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
-import { gradingGatePassRoutes } from './modules/bhatti/v1/grading-gate-pass/grading-gate-pass.routes.js';
-import { storageGatePassRoutes } from './modules/bhatti/v1/storage-gate-pass/storage-gate-pass.routes.js';
-import { nikasiGatePassRoutes } from './modules/bhatti/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
-import { outgoingGatePassRoutes } from './modules/bhatti/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
-import { analyticsRoutes } from './modules/bhatti/v1/analytics/analytics.routes.js';
+import { coldStorageRoutes } from './modules/kapur/v1/cold-storage/cold-storage.routes.js';
+import { storeAdminRoutes } from './modules/kapur/v1/store-admin/store-admin.routes.js';
+import { incomingGatePassRoutes } from './modules/kapur/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
+import { gradingGatePassRoutes } from './modules/kapur/v1/grading-gate-pass/grading-gate-pass.routes.js';
+import { storageGatePassRoutes } from './modules/kapur/v1/storage-gate-pass/storage-gate-pass.routes.js';
+import { nikasiGatePassRoutes } from './modules/kapur/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
+import { outgoingGatePassRoutes } from './modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
+import { analyticsRoutes } from './modules/kapur/v1/analytics/analytics.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {

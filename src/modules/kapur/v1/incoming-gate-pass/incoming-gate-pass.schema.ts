@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { GatePassStatus } from './incoming-gate-pass.model.js';
+import {
+  GatePassStatus,
+  IncomingGatePassCategory,
+} from './incoming-gate-pass.model.js';
 
 const weightSlipSchema = z.object({
   slipNumber: z.string().trim().optional(),
@@ -41,6 +44,10 @@ export const createIncomingGatePassSchema = z.object({
       .trim()
       .min(1, 'Variety is required')
       .max(100, 'Variety must not exceed 100 characters'),
+
+    category: z.nativeEnum(IncomingGatePassCategory, {
+      message: 'Category is required and must be one of the allowed options',
+    }),
 
     truckNumber: z
       .string()
@@ -103,6 +110,8 @@ export const updateIncomingGatePassSchema = z.object({
       .min(1, 'Variety is required')
       .max(100, 'Variety must not exceed 100 characters')
       .optional(),
+
+    category: z.nativeEnum(IncomingGatePassCategory).optional(),
 
     truckNumber: z
       .string()

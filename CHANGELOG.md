@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-19
+
+### Notice
+
+- **KAPUR FARMS CHANGES STARTED HERE** – This release marks the beginning of Kapur Farms–specific development. The codebase is being restructured: Bhatti-related modules under `src/modules/bhatti/` have been removed or refactored, and new Kapur-specific modules are being introduced under `src/modules/kapur/`. Application entry (`app.ts`) and auth utilities have been updated accordingly.
+
+### Added
+
+- **Kapur Modules**
+  - New Kapur module structure under `src/modules/kapur/v1/` (e.g. incoming-gate-pass and related components) as the foundation for Kapur Farms features.
+
+### Changed
+
+- **Application**
+  - `app.ts` updated to register Kapur routes and remove or replace Bhatti-specific route registration.
+- **Auth**
+  - `src/utils/auth.ts` updated to support Kapur Farms authentication flow.
+
+### Removed
+
+- **Bhatti Modules**
+  - Removed Bhatti v1 modules: analytics, cold-storage, farmer-storage-link, grading-gate-pass, incoming-gate-pass, nikasi-gate-pass, outgoing-gate-pass, preferences, role-permission, shortage-stock, storage-gate-pass, store-admin (controllers, routes, services, models, schemas as per git status).
+
+---
+
 ## [1.7.0] - 2026-02-15
 
 ### Added

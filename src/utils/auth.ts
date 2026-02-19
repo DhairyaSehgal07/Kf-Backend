@@ -2,7 +2,7 @@
 import { FastifyRequest } from 'fastify';
 import { UnauthorizedError } from './errors.js';
 import { ForbiddenError } from './errors.js';
-import { Role } from '../modules/bhatti/v1/store-admin/store-admin.model.js';
+import { Role } from '../modules/kapur/v1/store-admin/store-admin.model.js';
 
 /**
  * JWT Payload interface

@@ -8,7 +8,10 @@ import {
   createIncomingGatePassSchema,
   updateIncomingGatePassSchema,
 } from './incoming-gate-pass.schema.js';
+import { IncomingGatePassCategory } from './incoming-gate-pass.model.js';
 import { authenticate } from '../../../../utils/auth.js';
+
+const categoryEnumValues = Object.values(IncomingGatePassCategory);
 
 /**
  * Register incoming gate pass routes
@@ -24,6 +27,49 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
         description: 'Create a new incoming gate pass',
         tags: ['Incoming Gate Pass'],
         summary: 'Create incoming gate pass',
+        body: {
+          type: 'object',
+          required: [
+            'farmerStorageLinkId',
+            'gatePassNo',
+            'date',
+            'variety',
+            'category',
+            'truckNumber',
+            'bagsReceived',
+          ],
+          properties: {
+            farmerStorageLinkId: { type: 'string' },
+            gatePassNo: { type: 'number' },
+            manualGatePassNumber: { type: 'number' },
+            date: { type: 'string', format: 'date-time' },
+            variety: { type: 'string' },
+            category: {
+              type: 'string',
+              enum: categoryEnumValues,
+              description: 'Category of the gate pass',
+            },
+            truckNumber: { type: 'string' },
+            bagsReceived: { type: 'number' },
+            weightSlip: {
+              type: 'object',
+              properties: {
+                slipNumber: { type: 'string' },
+                grossWeightKg: { type: 'number' },
+                tareWeightKg: { type: 'number' },
+              },
+            },
+            status: {
+              type: 'string',
+              enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
+            },
+            gradingSummary: {
+              type: 'object',
+              properties: { totalGradedBags: { type: 'number' } },
+            },
+            remarks: { type: 'string' },
+          },
+        },
         response: {
           201: {
             description: 'Incoming gate pass created successfully',
@@ -149,6 +195,40 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
         description: 'Update an incoming gate pass',
         tags: ['Incoming Gate Pass'],
         summary: 'Update incoming gate pass',
+        body: {
+          type: 'object',
+          properties: {
+            farmerStorageLinkId: { type: 'string' },
+            gatePassNo: { type: 'number' },
+            date: { type: 'string', format: 'date-time' },
+            variety: { type: 'string' },
+            category: {
+              type: 'string',
+              enum: categoryEnumValues,
+              description: 'Category of the gate pass',
+            },
+            truckNumber: { type: 'string' },
+            bagsReceived: { type: 'number' },
+            weightSlip: {
+              type: 'object',
+              properties: {
+                slipNumber: { type: 'string' },
+                grossWeightKg: { type: 'number' },
+                tareWeightKg: { type: 'number' },
+              },
+            },
+            status: {
+              type: 'string',
+              enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
+            },
+            gradingSummary: {
+              type: 'object',
+              properties: { totalGradedBags: { type: 'number' } },
+            },
+            remarks: { type: 'string' },
+            reason: { type: 'string' },
+          },
+        },
         response: {
           200: {
             description: 'Incoming gate pass updated successfully',
