@@ -108,3 +108,33 @@ export async function updateTemperature(
 
   return updated;
 }
+
+/**
+ * Get all temperature records for a cold storage
+ */
+export async function getTemperaturesByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError('Invalid cold storage ID format', 'INVALID_ID');
+  }
+
+  const coldStorage = await ColdStorage.findById(coldStorageId);
+  if (!coldStorage) {
+    throw new NotFoundError('Cold storage not found', 'COLD_STORAGE_NOT_FOUND');
+  }
+
+  const temperatures = await Temperature.find({
+    coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+  })
+    .sort({ date: -1 })
+    .lean();
+
+  logger?.info(
+    { coldStorageId, count: temperatures.length },
+    'Temperature records listed'
+  );
+
+  return temperatures;
+}

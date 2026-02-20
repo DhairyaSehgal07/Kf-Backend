@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-02-20
+
+### Added
+
+- **Temperature Module (Kapur)**
+  - GET `/api/v1/temperature` – list all temperature records for the authenticated cold storage (sorted by date descending).
+  - Service `getTemperaturesByColdStorage` with cold storage validation and 60/min rate limit.
+
+### Changed
+
+- **Store Admin / Daybook**
+  - Daybook and related route response schemas now include `category` on incoming gate pass (e.g. Own Stock, Contract Farming).
+  - Store admin service daybook aggregation projects `category` for incoming gate passes.
+
+---
+
 ## [1.10.0] - 2026-02-19
 
 ### Added

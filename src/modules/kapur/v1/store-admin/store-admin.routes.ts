@@ -214,6 +214,13 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                         incoming: {
                           type: 'object',
                           additionalProperties: true,
+                          properties: {
+                            category: {
+                              type: 'string',
+                              description:
+                                'Incoming category (e.g. Own Stock, Contract Farming)',
+                            },
+                          },
                         },
                         farmer: {
                           type: 'object',
@@ -411,7 +418,14 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                           type: 'object',
                           additionalProperties: true,
                           description:
-                            'Incoming gate pass (includes manualGatePassNumber when set)',
+                            'Incoming gate pass (includes manualGatePassNumber, category when set)',
+                          properties: {
+                            category: {
+                              type: 'string',
+                              description:
+                                'Incoming category (e.g. Own Stock, Contract Farming)',
+                            },
+                          },
                         },
                         farmer: {
                           type: 'object',

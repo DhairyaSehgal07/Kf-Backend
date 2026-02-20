@@ -1,5 +1,9 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { createTemperature, updateTemperature } from './temperature.service.js';
+import {
+  createTemperature,
+  updateTemperature,
+  getTemperaturesByColdStorage,
+} from './temperature.service.js';
 import {
   createTemperatureBodySchema,
   updateTemperatureParamsSchema,
@@ -27,6 +31,62 @@ function getColdStorageIdFromUser(req: AuthenticatedRequest): string {
     '_id' in coldStorageId
     ? coldStorageId._id
     : (coldStorageId as string);
+}
+
+export async function getTemperaturesHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId = getColdStorageIdFromUser(req);
+
+    const temperatures = await getTemperaturesByColdStorage(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: temperatures,
+      message: 'Temperature records retrieved successfully',
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getTemperaturesHandler');
+
+    if (error instanceof NotFoundError || error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
 }
 
 export async function createTemperatureHandler(

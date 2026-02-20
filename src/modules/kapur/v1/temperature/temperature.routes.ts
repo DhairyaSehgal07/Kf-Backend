@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   createTemperatureHandler,
   updateTemperatureHandler,
+  getTemperaturesHandler,
 } from './temperature.controller.js';
 import {
   createTemperatureBodySchema,
@@ -15,6 +16,46 @@ import { authenticate } from '../../../../utils/auth.js';
  * @param fastify - Fastify instance
  */
 export async function temperatureRoutes(fastify: FastifyInstance) {
+  // Get all temperature records for the authenticated cold storage
+  fastify.get(
+    '/',
+    {
+      schema: {
+        description:
+          'Get all temperature records for the authenticated cold storage',
+        tags: ['Temperature'],
+        summary: 'Get temperature records',
+        response: {
+          200: {
+            description: 'Temperature records retrieved successfully',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+              message: { type: 'string' },
+            },
+          },
+          401: { description: 'Unauthorized' },
+          404: { description: 'Cold storage not found' },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getTemperaturesHandler as never
+  );
+
   // Create temperature record
   fastify.post(
     '/',

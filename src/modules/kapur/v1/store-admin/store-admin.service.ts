@@ -917,6 +917,7 @@ export async function getDaybook(
             manualGatePassNumber: '$manualGatePassNumber',
             date: '$date',
             variety: '$variety',
+            category: '$category',
             truckNumber: '$truckNumber',
             bagsReceived: '$bagsReceived',
             weightSlip: '$weightSlip',
