@@ -4,11 +4,15 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
    INTERFACES
 ======================= */
 
+export interface ITemperatureReading {
+  chamber: string;
+  value: number;
+}
+
 export interface ITemperature extends Document {
   coldStorageId: Types.ObjectId;
-  chamber: string;
-  runningTemperature: number;
   date: Date;
+  temperatureReading: ITemperatureReading[];
 
   createdAt: Date;
   updatedAt: Date;
@@ -18,6 +22,21 @@ export interface ITemperature extends Document {
    SCHEMA
 ======================= */
 
+const TemperatureReadingSchema = new Schema<ITemperatureReading>(
+  {
+    chamber: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    value: {
+      type: Number,
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
 const TemperatureSchema = new Schema<ITemperature>(
   {
     coldStorageId: {
@@ -26,23 +45,14 @@ const TemperatureSchema = new Schema<ITemperature>(
       required: true,
       index: true,
     },
-
-    chamber: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-
-    runningTemperature: {
-      type: Number,
-      required: true,
-    },
-
     date: {
       type: Date,
       required: true,
       index: true,
+    },
+    temperatureReading: {
+      type: [TemperatureReadingSchema],
+      default: [],
     },
   },
   {
@@ -55,7 +65,6 @@ const TemperatureSchema = new Schema<ITemperature>(
 ======================= */
 
 TemperatureSchema.index({ coldStorageId: 1, date: -1 });
-TemperatureSchema.index({ coldStorageId: 1, chamber: 1, date: -1 });
 
 /* =======================
    MODEL

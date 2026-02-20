@@ -6,6 +6,8 @@ export interface IFarmer extends Document {
   address: string;
   mobileNumber: string;
   imageUrl?: string;
+  aadharCardNumber?: string;
+  panCardNumber?: string;
   password: string;
 
   createdAt: Date;
@@ -35,6 +37,14 @@ const farmerSchema = new Schema<IFarmer>(
     imageUrl: {
       type: String,
       default: '',
+    },
+
+    aadharCardNumber: {
+      type: String,
+    },
+
+    panCardNumber: {
+      type: String,
     },
 
     password: {

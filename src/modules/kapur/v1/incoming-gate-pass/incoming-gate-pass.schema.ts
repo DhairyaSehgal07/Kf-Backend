@@ -71,6 +71,18 @@ export const createIncomingGatePassSchema = z.object({
       .trim()
       .max(500, 'Remarks must not exceed 500 characters')
       .optional(),
+
+    aadharCardNumber: z
+      .string()
+      .trim()
+      .max(12, 'Aadhar card number must not exceed 12 characters')
+      .optional(),
+
+    panCardNumber: z
+      .string()
+      .trim()
+      .max(10, 'PAN card number must not exceed 10 characters')
+      .optional(),
   }),
 });
 

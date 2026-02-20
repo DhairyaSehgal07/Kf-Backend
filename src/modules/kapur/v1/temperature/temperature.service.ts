@@ -31,17 +31,16 @@ export async function createTemperature(
 
   const temperature = await Temperature.create({
     coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
-    chamber: payload.chamber,
-    runningTemperature: payload.runningTemperature,
     date: payload.date,
+    temperatureReading: payload.temperatureReading,
   });
 
   logger?.info(
     {
       temperatureId: temperature._id,
       coldStorageId,
-      chamber: temperature.chamber,
       date: temperature.date,
+      readingCount: temperature.temperatureReading.length,
     },
     'Temperature record created'
   );
@@ -90,10 +89,9 @@ export async function updateTemperature(
   }
 
   const update: Partial<UpdateTemperatureInput> = {};
-  if (payload.chamber !== undefined) update.chamber = payload.chamber;
-  if (payload.runningTemperature !== undefined)
-    update.runningTemperature = payload.runningTemperature;
   if (payload.date !== undefined) update.date = payload.date;
+  if (payload.temperatureReading !== undefined)
+    update.temperatureReading = payload.temperatureReading;
 
   const updated = await Temperature.findByIdAndUpdate(
     temperatureId,

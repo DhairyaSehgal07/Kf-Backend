@@ -68,6 +68,8 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
               properties: { totalGradedBags: { type: 'number' } },
             },
             remarks: { type: 'string' },
+            aadharCardNumber: { type: 'string' },
+            panCardNumber: { type: 'string' },
           },
         },
         response: {

@@ -68,17 +68,30 @@ export async function temperatureRoutes(fastify: FastifyInstance) {
         summary: 'Create temperature record',
         body: {
           type: 'object',
-          required: ['chamber', 'runningTemperature', 'date'],
+          required: ['date', 'temperatureReading'],
           properties: {
-            chamber: { type: 'string', description: 'Chamber identifier' },
-            runningTemperature: {
-              type: 'number',
-              description: 'Running temperature value',
-            },
             date: {
               type: 'string',
               format: 'date-time',
               description: 'Date of the reading',
+            },
+            temperatureReading: {
+              type: 'array',
+              description: 'Array of chamber temperature readings',
+              items: {
+                type: 'object',
+                required: ['chamber', 'value'],
+                properties: {
+                  chamber: {
+                    type: 'string',
+                    description: 'Chamber identifier',
+                  },
+                  value: {
+                    type: 'number',
+                    description: 'Temperature value',
+                  },
+                },
+              },
             },
           },
         },
@@ -142,15 +155,28 @@ export async function temperatureRoutes(fastify: FastifyInstance) {
           type: 'object',
           minProperties: 1,
           properties: {
-            chamber: { type: 'string', description: 'Chamber identifier' },
-            runningTemperature: {
-              type: 'number',
-              description: 'Running temperature value',
-            },
             date: {
               type: 'string',
               format: 'date-time',
               description: 'Date of the reading',
+            },
+            temperatureReading: {
+              type: 'array',
+              description: 'Array of chamber temperature readings',
+              items: {
+                type: 'object',
+                required: ['chamber', 'value'],
+                properties: {
+                  chamber: {
+                    type: 'string',
+                    description: 'Chamber identifier',
+                  },
+                  value: {
+                    type: 'number',
+                    description: 'Temperature value',
+                  },
+                },
+              },
             },
           },
         },

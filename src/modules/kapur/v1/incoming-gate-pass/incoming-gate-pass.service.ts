@@ -12,6 +12,7 @@ import {
 } from '../../../../utils/errors.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
+import { Farmer } from '../farmer/farmer.model.js';
 
 /**
  * Creates a new incoming gate pass
@@ -91,9 +92,26 @@ export async function createIncomingGatePass(
       );
     }
 
+    // Update linked farmer with aadhar/pan if provided
+    const { aadharCardNumber, panCardNumber, ...gatePassPayload } = payload;
+    const farmerId = (
+      farmerStorageLink as { farmerId: mongoose.Types.ObjectId }
+    ).farmerId;
+    if (aadharCardNumber !== undefined || panCardNumber !== undefined) {
+      const farmerUpdate: {
+        aadharCardNumber?: string;
+        panCardNumber?: string;
+      } = {};
+      if (aadharCardNumber !== undefined)
+        farmerUpdate.aadharCardNumber = aadharCardNumber;
+      if (panCardNumber !== undefined)
+        farmerUpdate.panCardNumber = panCardNumber;
+      await Farmer.findByIdAndUpdate(farmerId, { $set: farmerUpdate });
+    }
+
     // Create the incoming gate pass
     const incomingGatePass = await IncomingGatePass.create({
-      ...payload,
+      ...gatePassPayload,
       ...(createdById && { createdBy: createdById }),
       gradingSummary: payload.gradingSummary || { totalGradedBags: 0 },
     });

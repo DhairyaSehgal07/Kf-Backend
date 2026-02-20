@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-02-21
+
+### Added
+
+- **Rental Storage Gate Pass Module (Kapur)**
+  - New module under `src/modules/kapur/v1/rental-storage-gate-pass/` (model, service, controller, routes, schema).
+  - Routes registered at `/api/v1/rental-storage-gate-pass`; POST `/` to create a rental storage gate pass with authentication and rate limiting.
+
+- **Rental Incoming Order**
+  - Model added under `src/modules/kapur/v1/rental-incoming-order/` as foundation for rental incoming orders.
+
+- **Farmer**
+  - Optional `aadharCardNumber` and `panCardNumber` on farmer model.
+
+- **Incoming Gate Pass**
+  - Create payload accepts optional `aadharCardNumber` and `panCardNumber`; when provided, the linked farmer is updated with these values.
+
+- **Store Admin**
+  - Quick register farmer schema and service accept optional `aadharCardNumber` and `panCardNumber`.
+  - Voucher types extended with `rental-storage-gate-pass` and `rental-incoming-order`; `getNextVoucherNumber` supports both for voucher sequencing.
+
+### Changed
+
+- **Application**
+  - `app.ts` registers rental storage gate pass routes at `/api/v1/rental-storage-gate-pass`.
+
+- **Temperature Module**
+  - Model: single `chamber` + `runningTemperature` replaced by `temperatureReading` array of `{ chamber, value }` per record; one record per date can hold multiple chamber readings.
+  - Create/update API: body uses `date` and `temperatureReading` (array of `{ chamber, value }`); at least one reading required on create.
+
+---
+
 ## [1.11.0] - 2026-02-20
 
 ### Added

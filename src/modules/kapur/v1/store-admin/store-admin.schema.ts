@@ -212,6 +212,18 @@ export const quickRegisterFarmerSchema = z.object({
       .int()
       .positive('Account number must be a positive integer')
       .optional(),
+
+    aadharCardNumber: z
+      .string()
+      .trim()
+      .max(12, 'Aadhar card number must not exceed 12 characters')
+      .optional(),
+
+    panCardNumber: z
+      .string()
+      .trim()
+      .max(10, 'PAN card number must not exceed 10 characters')
+      .optional(),
   }),
 });
 
@@ -295,6 +307,8 @@ export const VOUCHER_TYPE_VALUES = [
   'storage-gate-pass',
   'nikasi-gate-pass',
   'outgoing-gate-pass',
+  'rental-storage-gate-pass',
+  'rental-incoming-order',
 ] as const;
 
 export const getVoucherNumberQuerySchema = z.object({
