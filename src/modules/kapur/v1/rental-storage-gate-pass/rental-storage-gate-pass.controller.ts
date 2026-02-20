@@ -1,5 +1,8 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { createRentalStorageGatePass } from './rental-storage-gate-pass.service.js';
+import {
+  createRentalStorageGatePass,
+  getRentalStorageGatePassesByColdStorage,
+} from './rental-storage-gate-pass.service.js';
 import {
   createRentalStorageGatePassSchema,
   type CreateRentalStorageGatePassInput,
@@ -8,6 +11,7 @@ import {
   AppError,
   ConflictError,
   NotFoundError,
+  UnauthorizedError,
   ValidationError,
 } from '../../../../utils/errors.js';
 import { AuthenticatedRequest } from '../../../../utils/auth.js';
@@ -74,6 +78,90 @@ export async function createRentalStorageGatePassHandler(
     }
 
     if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving rental storage gate passes for the authenticated store's cold storage
+ */
+export async function getRentalStorageGatePassesByColdStorageHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const gatePasses = await getRentalStorageGatePassesByColdStorage(
+      coldStorageId,
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: gatePasses,
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getRentalStorageGatePassesByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({
         success: false,
         error: {

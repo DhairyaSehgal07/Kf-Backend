@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-02-21
+
+### Added
+
+- **Rental Storage Gate Pass (Kapur)**
+  - GET `/api/v1/rental-storage-gate-pass` – list all rental storage gate passes for the authenticated store's cold storage (sorted by date and gate pass number descending), with populated farmer storage link and created-by details; 200/min rate limit.
+
+---
+
 ## [1.12.0] - 2026-02-21
 
 ### Added

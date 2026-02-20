@@ -205,3 +205,97 @@ export async function createRentalStorageGatePass(
     );
   }
 }
+
+/**
+ * Retrieves all rental storage gate passes for a cold storage (store).
+ * @param coldStorageId - Cold storage ID (from authenticated store admin)
+ * @param logger - Optional logger instance
+ * @returns Array of rental storage gate passes with populated farmerStorageLinkId and createdBy
+ * @throws ValidationError if cold storage ID format is invalid
+ */
+export async function getRentalStorageGatePassesByColdStorage(
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const gatePasses = await RentalStorageGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .populate({
+        path: 'farmerStorageLinkId',
+        select: 'accountNumber farmerId',
+        populate: {
+          path: 'farmerId',
+          select: 'name address mobileNumber',
+        },
+      })
+      .populate({ path: 'createdBy', select: 'name' })
+      .sort({ date: -1, gatePassNo: -1 })
+      .lean();
+
+    logger?.info(
+      { coldStorageId, count: gatePasses.length },
+      'Retrieved rental storage gate passes by cold storage'
+    );
+
+    type PopulatedLink = {
+      accountNumber: number;
+      farmerId: { name: string; address: string; mobileNumber: string };
+    };
+    type PopulatedAdmin = { _id: unknown; name: string };
+
+    return gatePasses.map((raw) => {
+      const row = raw as unknown as Record<string, unknown>;
+      const populatedLink = row.farmerStorageLinkId as
+        | PopulatedLink
+        | null
+        | undefined;
+      const populatedAdmin = row.createdBy as PopulatedAdmin | null | undefined;
+      return {
+        ...row,
+        farmerStorageLinkId:
+          populatedLink && populatedLink.farmerId
+            ? {
+                name: populatedLink.farmerId.name,
+                accountNumber: populatedLink.accountNumber,
+                address: populatedLink.farmerId.address,
+                mobileNumber: populatedLink.farmerId.mobileNumber,
+              }
+            : row.farmerStorageLinkId,
+        createdBy: populatedAdmin
+          ? { _id: populatedAdmin._id, name: populatedAdmin.name }
+          : row.createdBy,
+      };
+    });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving rental storage gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve rental storage gate passes',
+      500,
+      'GET_RENTAL_STORAGE_GATE_PASSES_ERROR'
+    );
+  }
+}
