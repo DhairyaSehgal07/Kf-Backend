@@ -25,7 +25,6 @@ import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
 import { RentalStorageGatePass } from '../rental-storage-gate-pass/rental-storage-gate-pass.model.js';
-import { RentalIncomingOrder } from '../rental-incoming-order/rental-incoming-order.model.js';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -1786,18 +1785,6 @@ export async function getNextVoucherNumber(
 
   if (type === 'rental-storage-gate-pass') {
     const last = await RentalStorageGatePass.findOne({
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
-    return next;
-  }
-
-  if (type === 'rental-incoming-order') {
-    const last = await RentalIncomingOrder.findOne({
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
     })
       .sort({ gatePassNo: -1 })

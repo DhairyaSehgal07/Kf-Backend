@@ -44,7 +44,7 @@ export const createRentalStorageGatePassSchema = z.object({
 
     remarks: z.string().trim().optional(),
 
-    manualParchiNumber: z.string().trim().optional(),
+    manualRentalGatePassNumber: z.string().trim().optional(),
 
     amount: z.coerce
       .number()

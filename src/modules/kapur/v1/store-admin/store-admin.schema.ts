@@ -300,16 +300,8 @@ export type UpdateFarmerStorageLinkInput = z.infer<
   typeof updateFarmerStorageLinkSchema
 >['body'];
 
-/** Allowed voucher types for Get Voucher Number route */
-export const VOUCHER_TYPE_VALUES = [
-  'incoming-gate-pass',
-  'grading-gate-pass',
-  'storage-gate-pass',
-  'nikasi-gate-pass',
-  'outgoing-gate-pass',
-  'rental-storage-gate-pass',
-  'rental-incoming-order',
-] as const;
+/** Allowed voucher types for Get Voucher Number route (rental storage gate pass only) */
+export const VOUCHER_TYPE_VALUES = ['rental-storage-gate-pass'] as const;
 
 export const getVoucherNumberQuerySchema = z.object({
   querystring: z.object({

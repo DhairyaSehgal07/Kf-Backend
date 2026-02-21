@@ -45,7 +45,7 @@ async function getNextRentalGatePassNumber(
 
 /**
  * Create a new rental storage gate pass.
- * @param payload - Create body (farmerStorageLinkId, date, variety, truckNumber?, bagSizes, remarks?, manualParchiNumber?, createdById?)
+ * @param payload - Create body (farmerStorageLinkId, date, variety, truckNumber?, bagSizes, remarks?, manualRentalGatePassNumber?, createdById?)
  * @param createdById - Optional store admin ID (from auth)
  * @param logger - Optional logger instance
  * @returns Created rental storage gate pass document
@@ -113,7 +113,7 @@ export async function createRentalStorageGatePass(
       bagSizes: payload.bagSizes,
       status: GatePassStatus.OPEN,
       remarks: payload.remarks,
-      manualParchiNumber: payload.manualParchiNumber,
+      manualRentalGatePassNumber: payload.manualRentalGatePassNumber,
     });
 
     logger?.info(

@@ -49,7 +49,7 @@ export interface IRentalStorageGatePass {
 
   remarks?: string;
 
-  manualParchiNumber?: string;
+  manualRentalGatePassNumber?: string;
 
   /** Reference to the rent entry voucher created when showFinances is enabled */
   rentEntryVoucherId?: Types.ObjectId;
@@ -172,7 +172,7 @@ const RentalStorageGatePassSchema = new Schema<IRentalStorageGatePass>(
       trim: true,
     },
 
-    manualParchiNumber: {
+    manualRentalGatePassNumber: {
       type: String,
       required: false,
       trim: true,
