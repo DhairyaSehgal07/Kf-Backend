@@ -224,6 +224,8 @@ export const quickRegisterFarmerSchema = z.object({
       .trim()
       .max(10, 'PAN card number must not exceed 10 characters')
       .optional(),
+
+    costPerBag: z.coerce.number().optional(),
   }),
 });
 
@@ -289,6 +291,8 @@ export const updateFarmerStorageLinkSchema = z.object({
         'Invalid store admin ID format'
       )
       .optional(),
+
+    costPerBag: z.coerce.number().optional(),
   }),
 });
 

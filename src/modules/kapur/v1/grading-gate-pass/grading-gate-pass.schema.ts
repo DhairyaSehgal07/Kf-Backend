@@ -29,14 +29,18 @@ export const createGradingGatePassSchema = z.object({
         'Invalid farmer storage link ID format'
       ),
 
-    incomingGatePassId: z
-      .string()
-      .trim()
-      .min(1, 'Incoming gate pass ID is required')
-      .refine(
-        (val) => mongoose.Types.ObjectId.isValid(val),
-        'Invalid incoming gate pass ID format'
-      ),
+    incomingGatePassIds: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1, 'Incoming gate pass ID is required')
+          .refine(
+            (val) => mongoose.Types.ObjectId.isValid(val),
+            'Invalid incoming gate pass ID format'
+          )
+      )
+      .min(1, 'At least one incoming gate pass ID is required'),
 
     gatePassNo: z.coerce
       .number()
@@ -85,14 +89,18 @@ export const updateGradingGatePassSchema = z.object({
       ),
   }),
   body: z.object({
-    incomingGatePassId: z
-      .string()
-      .trim()
-      .min(1, 'Incoming gate pass ID is required')
-      .refine(
-        (val) => mongoose.Types.ObjectId.isValid(val),
-        'Invalid incoming gate pass ID format'
+    incomingGatePassIds: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1, 'Incoming gate pass ID is required')
+          .refine(
+            (val) => mongoose.Types.ObjectId.isValid(val),
+            'Invalid incoming gate pass ID format'
+          )
       )
+      .min(1, 'At least one incoming gate pass ID is required')
       .optional(),
 
     gatePassNo: z.coerce

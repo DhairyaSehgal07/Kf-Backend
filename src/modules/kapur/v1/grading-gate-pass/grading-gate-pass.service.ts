@@ -28,37 +28,52 @@ export async function createGradingGatePass(
   createdBy?: string
 ) {
   try {
-    // Validate incoming gate pass exists
+    // Validate all incoming gate passes exist and share the same farmer storage link
     const IncomingGatePass = mongoose.model('IncomingGatePass');
-    const incomingGatePass = await IncomingGatePass.findById(
-      payload.incomingGatePassId
-    );
+    const incomingGatePasses = await IncomingGatePass.find({
+      _id: { $in: payload.incomingGatePassIds },
+    }).lean();
 
-    if (!incomingGatePass) {
+    if (incomingGatePasses.length !== payload.incomingGatePassIds.length) {
+      const foundIds = new Set(
+        incomingGatePasses.map((p) =>
+          (p as { _id: mongoose.Types.ObjectId })._id.toString()
+        )
+      );
+      const missing = payload.incomingGatePassIds.filter(
+        (id) => !foundIds.has(id)
+      );
       logger?.warn(
-        { incomingGatePassId: payload.incomingGatePassId },
-        'Attempt to create grading gate pass for non-existent incoming gate pass'
+        { missingIncomingGatePassIds: missing },
+        'Attempt to create grading gate pass for non-existent incoming gate pass(s)'
       );
       throw new NotFoundError(
-        'Incoming gate pass not found',
+        'One or more incoming gate passes not found',
         'INCOMING_GATE_PASS_NOT_FOUND'
       );
     }
 
-    const incomingFarmerStorageLinkId =
-      (
-        incomingGatePass as { farmerStorageLinkId?: unknown }
-      ).farmerStorageLinkId?.toString?.() ?? '';
-    if (incomingFarmerStorageLinkId !== payload.farmerStorageLinkId) {
+    const farmerStorageLinkIds = new Set(
+      incomingGatePasses.map(
+        (p) =>
+          (
+            p as { farmerStorageLinkId?: mongoose.Types.ObjectId }
+          ).farmerStorageLinkId?.toString?.() ?? ''
+      )
+    );
+    if (
+      farmerStorageLinkIds.size !== 1 ||
+      !farmerStorageLinkIds.has(payload.farmerStorageLinkId)
+    ) {
       logger?.warn(
         {
           payloadFarmerStorageLinkId: payload.farmerStorageLinkId,
-          incomingFarmerStorageLinkId,
+          incomingFarmerStorageLinkIds: [...farmerStorageLinkIds],
         },
-        'Farmer storage link does not match incoming gate pass'
+        'Farmer storage link must match all incoming gate passes'
       );
       throw new ValidationError(
-        'Farmer storage link must match the incoming gate pass',
+        'Farmer storage link must match all incoming gate passes',
         'FARMER_STORAGE_LINK_MISMATCH'
       );
     }
@@ -124,6 +139,9 @@ export async function createGradingGatePass(
       farmerStorageLinkId: new mongoose.Types.ObjectId(
         payload.farmerStorageLinkId
       ),
+      incomingGatePassIds: payload.incomingGatePassIds.map(
+        (id) => new mongoose.Types.ObjectId(id)
+      ),
       ...(createdById && { createdBy: createdById }),
       allocationStatus: payload.allocationStatus || 'UNALLOCATED',
     });
@@ -132,7 +150,7 @@ export async function createGradingGatePass(
       {
         gradingGatePassId: gradingGatePass._id,
         gatePassNo: gradingGatePass.gatePassNo,
-        incomingGatePassId: gradingGatePass.incomingGatePassId,
+        incomingGatePassIds: gradingGatePass.incomingGatePassIds,
       },
       'Grading gate pass created successfully'
     );
@@ -222,21 +240,47 @@ export async function updateGradingGatePass(
       );
     }
 
-    // Validate incoming gate pass if being updated
-    if (payload.incomingGatePassId) {
+    // Validate incoming gate passes if being updated
+    if (payload.incomingGatePassIds && payload.incomingGatePassIds.length > 0) {
       const IncomingGatePass = mongoose.model('IncomingGatePass');
-      const incomingGatePass = await IncomingGatePass.findById(
-        payload.incomingGatePassId
-      );
+      const incomingGatePasses = await IncomingGatePass.find({
+        _id: { $in: payload.incomingGatePassIds },
+      }).lean();
 
-      if (!incomingGatePass) {
+      if (incomingGatePasses.length !== payload.incomingGatePassIds.length) {
+        const foundIds = new Set(
+          incomingGatePasses.map((p) =>
+            (p as { _id: mongoose.Types.ObjectId })._id.toString()
+          )
+        );
+        const missing = payload.incomingGatePassIds.filter(
+          (id) => !foundIds.has(id)
+        );
         logger?.warn(
-          { incomingGatePassId: payload.incomingGatePassId },
-          'Attempt to update grading gate pass with non-existent incoming gate pass'
+          { missingIncomingGatePassIds: missing },
+          'Attempt to update grading gate pass with non-existent incoming gate pass(s)'
         );
         throw new NotFoundError(
-          'Incoming gate pass not found',
+          'One or more incoming gate passes not found',
           'INCOMING_GATE_PASS_NOT_FOUND'
+        );
+      }
+
+      const farmerStorageLinkIds = new Set(
+        incomingGatePasses.map(
+          (p) =>
+            (
+              p as { farmerStorageLinkId?: mongoose.Types.ObjectId }
+            ).farmerStorageLinkId?.toString?.() ?? ''
+        )
+      );
+      if (
+        farmerStorageLinkIds.size !== 1 ||
+        !farmerStorageLinkIds.has(existing.farmerStorageLinkId.toString())
+      ) {
+        throw new ValidationError(
+          'Farmer storage link must match all incoming gate passes',
+          'FARMER_STORAGE_LINK_MISMATCH'
         );
       }
     }
@@ -297,7 +341,7 @@ export async function updateGradingGatePass(
 
     // Compare each field and create audit entries
     const fieldsToCheck: Array<keyof typeof updateData> = [
-      'incomingGatePassId',
+      'incomingGatePassIds',
       'gatePassNo',
       'date',
       'variety',
@@ -467,10 +511,10 @@ export async function getGradingGatePassesByColdStorage(
 
     // Get all grading gate passes for these incoming gate passes
     const gradingGatePasses = await GradingGatePass.find({
-      incomingGatePassId: { $in: incomingGatePassIds },
+      incomingGatePassIds: { $in: incomingGatePassIds },
     })
       .populate({
-        path: 'incomingGatePassId',
+        path: 'incomingGatePassIds',
         select:
           'truckNumber gatePassNo manualGatePassNumber date variety farmerStorageLinkId bagsReceived weightSlip status gradingSummary remarks createdAt updatedAt',
         populate: {
@@ -536,7 +580,7 @@ export async function getGradingGatePassesByFarmerStorageLink(
       farmerStorageLinkId: farmerStorageLinkObjectId,
     })
       .populate({
-        path: 'incomingGatePassId',
+        path: 'incomingGatePassIds',
         select:
           'truckNumber gatePassNo manualGatePassNumber date variety farmerStorageLinkId bagsReceived weightSlip status gradingSummary remarks createdAt updatedAt',
         populate: {

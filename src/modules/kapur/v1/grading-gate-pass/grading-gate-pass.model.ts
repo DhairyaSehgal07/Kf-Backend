@@ -33,7 +33,7 @@ interface IOrderDetail {
 
 export interface IGradingGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
-  incomingGatePassId: Types.ObjectId;
+  incomingGatePassIds: Types.ObjectId[];
   createdBy?: Types.ObjectId;
 
   gatePassNo: number;
@@ -106,10 +106,15 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       index: true,
     },
 
-    incomingGatePassId: {
-      type: Schema.Types.ObjectId,
+    incomingGatePassIds: {
+      type: [Schema.Types.ObjectId],
       ref: 'IncomingGatePass',
       required: true,
+      default: [],
+      validate: {
+        validator: (ids: Types.ObjectId[]) => ids.length > 0,
+        message: 'At least one incoming gate pass is required',
+      },
       index: true,
     },
 
@@ -175,8 +180,8 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
 // Farmer storage link lookup
 GradingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
-// One incoming → many grading passes (chronological)
-GradingGatePassSchema.index({ incomingGatePassId: 1, createdAt: -1 });
+// Incoming gate pass(es) → grading passes (chronological; multikey on array)
+GradingGatePassSchema.index({ incomingGatePassIds: 1, createdAt: -1 });
 
 // Gate passes by date for reporting
 GradingGatePassSchema.index({ date: -1 });

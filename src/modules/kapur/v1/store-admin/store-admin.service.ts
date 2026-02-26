@@ -664,7 +664,7 @@ export async function getDaybook(
           pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
         },
       },
-      // Grading passes for this incoming (uses index on incomingGatePassId), with createdBy populated
+      // Grading passes for this incoming (supports both incomingGatePassIds array and legacy incomingGatePassId)
       {
         $lookup: {
           from: col.gradingGatePasses,
@@ -672,7 +672,17 @@ export async function getDaybook(
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ['$incomingGatePassId', '$$incomingId'] },
+                $expr: {
+                  $or: [
+                    {
+                      $in: [
+                        '$$incomingId',
+                        { $ifNull: ['$incomingGatePassIds', []] },
+                      ],
+                    },
+                    { $eq: ['$$incomingId', '$incomingGatePassId'] },
+                  ],
+                },
               },
             },
             { $sort: { date: -1, gatePassNo: -1 } },
@@ -1060,9 +1070,20 @@ export async function getDaybook(
       throw error;
     }
 
-    logger?.error({ error, coldStorageId }, 'Error retrieving daybook');
+    const message =
+      error instanceof Error ? error.message : 'Failed to retrieve daybook';
+    logger?.error(
+      { error, coldStorageId, message },
+      'Error retrieving daybook'
+    );
 
-    throw new AppError('Failed to retrieve daybook', 500, 'GET_DAYBOOK_ERROR');
+    throw new AppError(
+      process.env.NODE_ENV === 'development'
+        ? message
+        : 'Failed to retrieve daybook',
+      500,
+      'GET_DAYBOOK_ERROR'
+    );
   }
 }
 
@@ -1430,6 +1451,9 @@ export async function quickRegisterFarmer(
       linkedById: payload.linkedById,
       accountNumber,
       isActive: true,
+      ...(payload.costPerBag !== undefined && {
+        costPerBag: payload.costPerBag,
+      }),
     });
 
     logger?.info(
@@ -1622,6 +1646,7 @@ export async function updateFarmerStorageLink(
       isActive: boolean;
       notes: string;
       linkedById: mongoose.Types.ObjectId;
+      costPerBag: number;
     }> = {};
 
     if (payload.accountNumber !== undefined) {
@@ -1637,6 +1662,9 @@ export async function updateFarmerStorageLink(
       linkUpdateData.linkedById = new mongoose.Types.ObjectId(
         payload.linkedById
       );
+    }
+    if (payload.costPerBag !== undefined) {
+      linkUpdateData.costPerBag = payload.costPerBag;
     }
 
     // Update farmer if there are farmer fields to update
@@ -1802,7 +1830,7 @@ export async function getNextVoucherNumber(
       .distinct('_id')
       .lean();
     const last = await GradingGatePass.findOne({
-      incomingGatePassId: { $in: incomingIds },
+      incomingGatePassIds: { $in: incomingIds },
     })
       .sort({ gatePassNo: -1 })
       .select('gatePassNo')
@@ -1819,7 +1847,7 @@ export async function getNextVoucherNumber(
     .distinct('_id')
     .lean();
   const gradingGatePassIds = await GradingGatePass.find({
-    incomingGatePassId: { $in: incomingIdsForGrading },
+    incomingGatePassIds: { $in: incomingIdsForGrading },
   })
     .distinct('_id')
     .lean();

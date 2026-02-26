@@ -197,7 +197,7 @@ export async function getOverview(
 
     // Ungraded incoming: incoming vouchers that have no grading voucher associated
     const gradedIncomingIds = await GradingGatePass.distinct(
-      'incomingGatePassId',
+      'incomingGatePassIds',
       matchGrading
     );
     const matchUngradedIncoming: Record<string, unknown> = {

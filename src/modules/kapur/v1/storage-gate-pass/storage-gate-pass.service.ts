@@ -1081,7 +1081,7 @@ export async function getStorageGatePassesByColdStorage(
 
     // Get all grading gate pass IDs for these incoming gate passes
     const gradingGatePassIds = await GradingGatePass.find({
-      incomingGatePassId: { $in: incomingGatePassIds },
+      incomingGatePassIds: { $in: incomingGatePassIds },
     })
       .distinct('_id')
       .lean();
@@ -1093,7 +1093,7 @@ export async function getStorageGatePassesByColdStorage(
       .populate({
         path: 'gradingGatePassIds',
         populate: {
-          path: 'incomingGatePassId',
+          path: 'incomingGatePassIds',
           populate: {
             path: 'farmerStorageLinkId',
             populate: [
