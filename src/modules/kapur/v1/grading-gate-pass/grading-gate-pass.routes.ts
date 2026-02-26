@@ -24,7 +24,8 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         ...createGradingGatePassSchema,
-        description: 'Create a new grading gate pass',
+        description:
+          'Create a new grading gate pass. Accepts one or more incoming gate pass IDs in `incomingGatePassIds` (array).',
         tags: ['Grading Gate Pass'],
         summary: 'Create grading gate pass',
         response: {
@@ -52,7 +53,8 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
             },
           },
           404: {
-            description: 'Incoming gate pass or store admin not found',
+            description:
+              'One or more incoming gate passes or store admin not found',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
