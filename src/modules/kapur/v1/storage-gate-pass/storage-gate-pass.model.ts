@@ -190,7 +190,6 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
-      index: true,
     },
 
     createdBy: {
@@ -202,7 +201,6 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      index: true,
     },
 
     manualGatePassNumber: {
@@ -217,7 +215,6 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
         validator: (ids: Types.ObjectId[]) => ids.length > 0,
         message: 'At least one grading gate pass ID is required',
       },
-      index: true,
     },
 
     gradingGatePassSnapshots: {
@@ -229,14 +226,12 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
     date: {
       type: Date,
       required: true,
-      index: true,
     },
 
     variety: {
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
 
     orderDetails: {
@@ -277,9 +272,6 @@ StorageGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
-
-// Created by user lookup
-// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 StorageGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

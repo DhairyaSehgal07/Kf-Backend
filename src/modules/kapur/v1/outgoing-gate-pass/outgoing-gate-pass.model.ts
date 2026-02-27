@@ -153,7 +153,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
-      index: true,
     },
 
     createdBy: {
@@ -166,7 +165,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'StorageGatePass',
       required: false,
-      index: true,
     },
 
     storageGatePassIds: {
@@ -177,7 +175,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
         validator: (ids: Types.ObjectId[]) => ids.length > 0,
         message: 'At least one storage gate pass ID is required',
       },
-      index: true,
     },
 
     storageGatePassSnapshots: {
@@ -189,7 +186,6 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      index: true,
     },
 
     manualGatePassNumber: {
@@ -199,14 +195,12 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
     date: {
       type: Date,
       required: true,
-      index: true,
     },
 
     variety: {
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
 
     from: {
@@ -259,9 +253,6 @@ OutgoingGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
-
-// Created by user lookup
-// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 OutgoingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

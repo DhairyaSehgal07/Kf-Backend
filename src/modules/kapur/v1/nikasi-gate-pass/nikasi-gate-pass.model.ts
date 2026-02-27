@@ -121,7 +121,6 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
-      index: true,
     },
 
     createdBy: {
@@ -133,7 +132,6 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      index: true,
     },
 
     manualGatePassNumber: {
@@ -148,7 +146,6 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
         validator: (ids: Types.ObjectId[]) => ids.length > 0,
         message: 'At least one grading gate pass ID is required',
       },
-      index: true,
     },
 
     gradingGatePassSnapshots: {
@@ -160,14 +157,12 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
     date: {
       type: Date,
       required: true,
-      index: true,
     },
 
     variety: {
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
 
     from: {
@@ -214,9 +209,6 @@ NikasiGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
-
-// Created by user lookup
-// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

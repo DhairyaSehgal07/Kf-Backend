@@ -170,3 +170,43 @@ export type UpdateIncomingGatePassInput = z.infer<
 export type UpdateIncomingGatePassParams = z.infer<
   typeof updateIncomingGatePassSchema
 >['params'];
+
+/** Query schema for get incoming gate passes (pagination + sort + search by gate pass number) */
+export const getIncomingGatePassesQuerySchema = z.object({
+  querystring: z.object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, 'Limit must be at least 1')
+      .max(100, 'Limit must not exceed 100')
+      .optional()
+      .default(10),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1, 'Page must be at least 1')
+      .optional()
+      .default(1),
+    sortOrder: z
+      .enum(['asc', 'desc'], {
+        message: 'sortOrder must be "asc" or "desc"',
+      })
+      .optional()
+      .default('desc'),
+    gatePassNo: z.coerce
+      .number()
+      .int()
+      .positive('Gate pass number must be a positive integer')
+      .optional(),
+    status: z
+      .enum(['graded', 'ungraded'], {
+        message:
+          'status must be "graded" or "ungraded" to filter by grading summary',
+      })
+      .optional(),
+  }),
+});
+
+export type GetIncomingGatePassesQuery = z.infer<
+  typeof getIncomingGatePassesQuerySchema
+>['querystring'];

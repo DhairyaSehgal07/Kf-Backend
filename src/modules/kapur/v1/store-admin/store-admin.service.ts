@@ -623,6 +623,7 @@ export async function getDaybook(
       farmerStorageLinks: FarmerStorageLink.collection.name,
       farmers: Farmer.collection.name,
       storeAdmins: StoreAdmin.collection.name,
+      incomingGatePasses: IncomingGatePass.collection.name,
       gradingGatePasses: GradingGatePass.collection.name,
       storageGatePasses: StorageGatePass.collection.name,
       nikasiGatePasses: NikasiGatePass.collection.name,
@@ -701,6 +702,46 @@ export async function getDaybook(
               },
             },
             { $project: { createdByPopulated: 0 } },
+            // Attach referenced incoming gate pass details (manualGatePassNumber, gatePassNo, weightSlip, bagsReceived)
+            {
+              $lookup: {
+                from: col.incomingGatePasses,
+                let: {
+                  incomingIds: {
+                    $cond: [
+                      {
+                        $gt: [
+                          { $size: { $ifNull: ['$incomingGatePassIds', []] } },
+                          0,
+                        ],
+                      },
+                      '$incomingGatePassIds',
+                      {
+                        $cond: [
+                          { $ne: ['$incomingGatePassId', null] },
+                          ['$incomingGatePassId'],
+                          [],
+                        ],
+                      },
+                    ],
+                  },
+                },
+                pipeline: [
+                  {
+                    $match: { $expr: { $in: ['$_id', '$$incomingIds'] } },
+                  },
+                  {
+                    $project: {
+                      manualGatePassNumber: 1,
+                      gatePassNo: 1,
+                      weightSlip: 1,
+                      bagsReceived: 1,
+                    },
+                  },
+                ],
+                as: 'referencedIncoming',
+              },
+            },
           ],
           as: 'gradingPasses',
         },

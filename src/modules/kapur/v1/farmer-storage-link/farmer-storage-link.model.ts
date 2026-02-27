@@ -70,9 +70,9 @@ farmerStorageLinkSchema.index(
   { unique: true }
 );
 
+// Lookup links by farmer or by cold storage
 farmerStorageLinkSchema.index({ farmerId: 1 });
 farmerStorageLinkSchema.index({ coldStorageId: 1 });
-farmerStorageLinkSchema.index({ createdAt: 1 });
 
 export const FarmerStorageLink: Model<IFarmerStorageLink> =
   mongoose.models.FarmerStorageLink ||

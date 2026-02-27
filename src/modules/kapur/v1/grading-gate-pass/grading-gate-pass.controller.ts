@@ -103,10 +103,19 @@ export async function createGradingGatePassHandler(
 }
 
 /**
- * Handler for retrieving grading gate passes for the authenticated user's cold storage
+ * Handler for retrieving grading gate passes for the authenticated user's cold storage.
+ * Supports pagination (limit, page), sortOrder (asc | desc), and search by gatePassNo.
+ * When gatePassNo is provided and no match exists, returns 404.
  */
 export async function getGradingGatePassesByColdStorageHandler(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      limit?: number;
+      page?: number;
+      sortOrder?: 'asc' | 'desc';
+      gatePassNo?: number;
+    };
+  }>,
   reply: FastifyReply
 ) {
   try {
@@ -126,14 +135,24 @@ export async function getGradingGatePassesByColdStorageHandler(
       );
     }
 
-    const gradingGatePasses = await getGradingGatePassesByColdStorage(
+    const query = request.query;
+    const limit = query.limit ?? 10;
+    const page = query.page ?? 1;
+    const sortOrder = query.sortOrder ?? 'desc';
+    const gatePassNo = query.gatePassNo;
+
+    const result = await getGradingGatePassesByColdStorage(
       coldStorageId,
+      { limit, page, sortOrder, gatePassNo },
       request.log
     );
 
     return reply.send({
       success: true,
-      data: gradingGatePasses,
+      data: {
+        gradingGatePasses: result.gradingGatePasses,
+        pagination: result.pagination,
+      },
     });
   } catch (error) {
     request.log.error(
@@ -142,6 +161,16 @@ export async function getGradingGatePassesByColdStorageHandler(
     );
 
     if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
       return reply.code(error.statusCode).send({
         success: false,
         error: {

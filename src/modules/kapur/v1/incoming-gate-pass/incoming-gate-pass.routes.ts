@@ -137,26 +137,76 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     createIncomingGatePassHandler as never
   );
 
-  // Get all incoming gate passes for authenticated user's cold storage
+  // Get all incoming gate passes for authenticated user's cold storage (with pagination)
   fastify.get(
     '/',
     {
       schema: {
         description:
-          "Get all incoming gate passes for the authenticated store admin's cold storage",
+          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc), search by gatePassNo, and filter by grading (status=graded|ungraded). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false.",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate passes for my cold storage',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 10, max 100)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+            sortOrder: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort by date (default desc)',
+            },
+            gatePassNo: {
+              type: 'number',
+              description:
+                'Search by gate pass number. Returns the single matching gate pass or 404 if not found.',
+            },
+            status: {
+              type: 'string',
+              enum: ['graded', 'ungraded'],
+              description:
+                'Filter by grading: graded = gradingSummary.graded true, ungraded = false.',
+            },
+          },
+        },
         response: {
           200: {
-            description: 'List of incoming gate passes',
+            description:
+              'Paginated list of incoming gate passes (or single match when gatePassNo is provided)',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: true,
+                type: 'object',
+                properties: {
+                  incomingGatePasses: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        gradingSummary: {
+                          type: 'object',
+                          properties: {
+                            totalGradedBags: { type: 'number' },
+                            graded: { type: 'boolean' },
+                          },
+                        },
+                      },
+                      additionalProperties: true,
+                    },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
+                    },
+                  },
                 },
               },
             },
@@ -170,6 +220,24 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
                 type: 'object',
                 properties: {
                   code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Incoming gate pass not found (when gatePassNo is provided and no match exists)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: {
+                    type: 'string',
+                    example: 'INCOMING_GATE_PASS_NOT_FOUND',
+                  },
                   message: { type: 'string' },
                 },
               },

@@ -103,7 +103,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
-      index: true,
     },
 
     incomingGatePassIds: {
@@ -115,7 +114,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
         validator: (ids: Types.ObjectId[]) => ids.length > 0,
         message: 'At least one incoming gate pass is required',
       },
-      index: true,
     },
 
     createdBy: {
@@ -127,7 +125,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      index: true,
     },
 
     manualGatePassNumber: {
@@ -137,14 +134,12 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
     date: {
       type: Date,
       required: true,
-      index: true,
     },
 
     variety: {
       type: String,
       required: true,
       trim: true,
-      index: true,
     },
 
     orderDetails: {
@@ -160,7 +155,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       type: String,
       enum: Object.values(AllocationStatus),
       default: AllocationStatus.UNALLOCATED,
-      index: true,
     },
 
     remarks: {
@@ -189,17 +183,11 @@ GradingGatePassSchema.index({ date: -1 });
 // Allocation status queries
 GradingGatePassSchema.index({ allocationStatus: 1, date: -1 });
 
-// Order detail size for bulk update filters (optimistic locking)
-GradingGatePassSchema.index({ 'orderDetails.size': 1 });
-
 // Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
 GradingGatePassSchema.index(
   { farmerStorageLinkId: 1, gatePassNo: 1 },
   { unique: true }
 );
-
-// Created by user lookup
-// createdBy is indexed via field-level index: true
 
 /* =======================
    MODEL

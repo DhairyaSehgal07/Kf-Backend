@@ -419,18 +419,43 @@ export async function updateIncomingGatePass(
   }
 }
 
+/** Options for getIncomingGatePassesByColdStorage (pagination + sort + search by gate pass number + filter by grading) */
+export interface GetIncomingGatePassesByColdStorageOptions {
+  limit?: number;
+  page?: number;
+  sortOrder?: 'asc' | 'desc';
+  /** When set, returns the single matching incoming gate pass or throws NotFoundError */
+  gatePassNo?: number;
+  /** When "graded", only vouchers with gradingSummary.graded === true; when "ungraded", only gradingSummary.graded === false */
+  status?: 'graded' | 'ungraded';
+}
+
+/** Pagination metadata for incoming gate passes list */
+export interface IncomingGatePassesPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 /**
- * Retrieves all incoming gate passes for a cold storage
+ * Retrieves incoming gate passes for a cold storage with pagination.
+ * When gatePassNo is provided, returns the single matching gate pass or throws NotFoundError.
  * @param coldStorageId - Cold storage ID
+ * @param options - Optional pagination (limit default 10, page default 1), sortOrder (default 'desc'), and gatePassNo (search by gate pass number)
  * @param logger - Optional logger instance
- * @returns Array of incoming gate passes
+ * @returns Object with incomingGatePasses array and pagination metadata
  * @throws ValidationError if cold storage ID format is invalid
- * @throws NotFoundError if cold storage not found in token
+ * @throws NotFoundError if gatePassNo is provided and no matching incoming gate pass exists
  */
 export async function getIncomingGatePassesByColdStorage(
   coldStorageId: string,
+  options: GetIncomingGatePassesByColdStorageOptions = {},
   logger?: FastifyBaseLogger
-) {
+): Promise<{
+  incomingGatePasses: Array<Record<string, unknown>>;
+  pagination: IncomingGatePassesPagination;
+}> {
   try {
     if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
       throw new ValidationError(
@@ -438,6 +463,12 @@ export async function getIncomingGatePassesByColdStorage(
         'INVALID_COLD_STORAGE_ID'
       );
     }
+
+    const limit = Math.min(Math.max(options.limit ?? 10, 1), 100);
+    const page = Math.max(options.page ?? 1, 1);
+    const sortOrder = options.sortOrder ?? 'desc';
+    const sortDir = sortOrder === 'desc' ? -1 : 1;
+    const gatePassNo = options.gatePassNo;
 
     const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
 
@@ -449,35 +480,82 @@ export async function getIncomingGatePassesByColdStorage(
       .distinct('_id')
       .lean();
 
-    // Get all incoming gate passes for these farmer storage links
-    const incomingGatePasses = await IncomingGatePass.find({
+    const filter: Record<string, unknown> = {
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .populate({
-        path: 'farmerStorageLinkId',
-        populate: [
-          {
-            path: 'farmerId',
-            select: 'name mobileNumber address',
-          },
-          {
-            path: 'linkedById',
-            select: 'name',
-          },
-        ],
-      })
-      .populate('createdBy', 'name mobileNumber')
-      .sort({ date: -1, gatePassNo: -1 })
-      .lean();
+    };
+    if (gatePassNo != null) {
+      filter.gatePassNo = gatePassNo;
+    }
+    if (options.status === 'graded') {
+      filter['gradingSummary.graded'] = true;
+    } else if (options.status === 'ungraded') {
+      // Match graded false OR missing (documents created with gradingSummary: {} have no graded key)
+      filter.$or = [
+        { 'gradingSummary.graded': false },
+        { 'gradingSummary.graded': { $exists: false } },
+      ];
+    }
+
+    const [total, incomingGatePasses] = await Promise.all([
+      IncomingGatePass.countDocuments(filter),
+      IncomingGatePass.find(filter)
+        .populate({
+          path: 'farmerStorageLinkId',
+          populate: [
+            {
+              path: 'farmerId',
+              select: 'name mobileNumber address',
+            },
+            {
+              path: 'linkedById',
+              select: 'name',
+            },
+          ],
+        })
+        .populate('createdBy', 'name mobileNumber')
+        .sort({ date: sortDir, gatePassNo: sortDir })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    // Search by gate pass number: if provided and no match, throw NotFoundError
+    if (gatePassNo != null && total === 0) {
+      throw new NotFoundError(
+        `Incoming gate pass with gate pass number ${gatePassNo} not found`,
+        'INCOMING_GATE_PASS_NOT_FOUND'
+      );
+    }
+
+    const totalPages = Math.ceil(total / limit);
 
     logger?.info(
-      { coldStorageId, count: incomingGatePasses.length },
+      {
+        coldStorageId,
+        count: incomingGatePasses.length,
+        total,
+        page,
+        limit,
+        ...(gatePassNo != null && { gatePassNo }),
+      },
       'Retrieved incoming gate passes by cold storage'
     );
 
-    return incomingGatePasses;
+    // Ensure gradingSummary always includes the graded boolean in the response
+    const items = incomingGatePasses.map((pass) => ({
+      ...pass,
+      gradingSummary: {
+        totalGradedBags: pass.gradingSummary?.totalGradedBags ?? 0,
+        graded: pass.gradingSummary?.graded ?? false,
+      },
+    }));
+
+    return {
+      incomingGatePasses: items as Array<Record<string, unknown>>,
+      pagination: { page, limit, total, totalPages },
+    };
   } catch (error) {
-    if (error instanceof ValidationError) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
       throw error;
     }
 

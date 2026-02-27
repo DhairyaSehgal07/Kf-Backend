@@ -29,7 +29,7 @@ const ColdStorageSchema = new Schema<IColdStorage>(
   {
     name: { type: String, required: true },
     address: { type: String, required: true },
-    mobileNumber: { type: String, required: true, unique: true, index: true },
+    mobileNumber: { type: String, required: true, unique: true },
     capacity: { type: Number, required: true },
     imageUrl: { type: String, default: '' },
     isPaid: { type: Boolean, default: false },
@@ -50,7 +50,7 @@ const ColdStorageSchema = new Schema<IColdStorage>(
   }
 );
 
-// Index for createdAt (like Prisma)
+// List cold storages sorted by creation
 ColdStorageSchema.index({ createdAt: 1 });
 
 // Export model

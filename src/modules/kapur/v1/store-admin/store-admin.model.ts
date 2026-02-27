@@ -30,7 +30,6 @@ const StoreAdminSchema = new Schema<IStoreAdmin>(
       type: Schema.Types.ObjectId,
       ref: 'ColdStorage',
       required: true,
-      index: true,
     },
 
     name: {
@@ -91,8 +90,8 @@ StoreAdminSchema.pre(
 
 /* -------------------- INDEXES -------------------- */
 
+// Unique mobile per cold storage; login uses findOne({ mobileNumber })
 StoreAdminSchema.index({ coldStorageId: 1, mobileNumber: 1 }, { unique: true });
-
 StoreAdminSchema.index({ mobileNumber: 1 });
 
 export const StoreAdmin =

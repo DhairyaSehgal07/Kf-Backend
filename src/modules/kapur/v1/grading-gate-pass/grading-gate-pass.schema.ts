@@ -169,7 +169,38 @@ export type GetGradingGatePassesByFarmerStorageLinkParams = z.infer<
   typeof getGradingGatePassesByFarmerStorageLinkSchema
 >['params'];
 
-/** Schema for GET / - no params/body; uses authenticated user's store (cold storage) */
+/** Schema for GET / - no params/body; uses authenticated user's store (cold storage). Supports pagination and search by gatePassNo. */
 export const getGradingGatePassesByStoreSchema = z.object({
-  querystring: z.object({}).optional(),
+  querystring: z
+    .object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1, 'Limit must be at least 1')
+        .max(100, 'Limit must not exceed 100')
+        .optional()
+        .default(10),
+      page: z.coerce
+        .number()
+        .int()
+        .min(1, 'Page must be at least 1')
+        .optional()
+        .default(1),
+      sortOrder: z
+        .enum(['asc', 'desc'], {
+          message: 'sortOrder must be "asc" or "desc"',
+        })
+        .optional()
+        .default('desc'),
+      gatePassNo: z.coerce
+        .number()
+        .int()
+        .positive('Gate pass number must be a positive integer')
+        .optional(),
+    })
+    .optional(),
 });
+
+export type GetGradingGatePassesByStoreQuery = z.infer<
+  typeof getGradingGatePassesByStoreSchema
+>['querystring'];

@@ -31,6 +31,7 @@ interface IWeightSlip {
 
 interface IGradingSummary {
   totalGradedBags: number;
+  graded: boolean;
 }
 
 export interface IIncomingGatePass extends Document {
@@ -74,6 +75,7 @@ const WeightSlipSchema = new Schema<IWeightSlip>(
 const GradingSummarySchema = new Schema<IGradingSummary>(
   {
     totalGradedBags: { type: Number, default: 0 },
+    graded: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -88,7 +90,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
-      index: true,
     },
 
     createdBy: {
@@ -100,7 +101,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
-      index: true,
     },
 
     manualGatePassNumber: {
@@ -110,7 +110,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
     date: {
       type: Date,
       required: true,
-      index: true,
     },
 
     variety: {
@@ -123,7 +122,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       type: String,
       enum: Object.values(IncomingGatePassCategory),
       required: true,
-      index: true,
     },
 
     truckNumber: {
@@ -146,7 +144,6 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
       type: String,
       enum: Object.values(GatePassStatus),
       default: GatePassStatus.OPEN,
-      index: true,
     },
 
     gradingSummary: {
@@ -168,10 +165,7 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
    INDEXES
 ======================= */
 
-// Gate passes by farmer storage link
-IncomingGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
-
-// Daybook: filter by farmer storage link, sort by date and gate pass number
+// Daybook/list: filter by farmer storage link, sort by date and gate pass number
 IncomingGatePassSchema.index({
   farmerStorageLinkId: 1,
   date: -1,
@@ -189,8 +183,6 @@ IncomingGatePassSchema.index(
   { farmerStorageLinkId: 1, gatePassNo: 1 },
   { unique: true }
 );
-
-// createdBy is indexed via field-level index: true
 
 /* =======================
    MODEL

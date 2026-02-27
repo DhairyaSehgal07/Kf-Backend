@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-02-28
+
+### Added
+
+- **Sync Indexes Script**
+  - New script `pnpm run sync-indexes` to sync MongoDB indexes with Mongoose schema definitions: creates missing indexes and drops indexes no longer defined in schemas. Requires `MONGO_URI` in env.
+
+- **Incoming Gate Pass – List**
+  - GET `/api/v1/incoming-gate-pass` supports pagination (`limit`, default 10; `page`), `sortOrder` (asc | desc), search by `gatePassNo`, and filter by `status` (graded | ungraded). When `gatePassNo` is provided and no match exists, returns 404. Response shape: `{ data: { incomingGatePasses, pagination } }`.
+
+- **Grading Gate Pass – List**
+  - GET `/api/v1/grading-gate-pass` supports pagination (`limit`, default 10; `page`), `sortOrder` (asc | desc), and search by `gatePassNo`. When `gatePassNo` is provided and no match exists, returns 404. Response shape: `{ data: { gradingGatePasses, pagination } }`.
+
+- **Incoming Gate Pass Model**
+  - `gradingSummary` extended with `graded` (boolean) for filtering graded vs ungraded vouchers.
+
+### Changed
+
+- **Store Admin Daybook**
+  - Daybook grading passes now include referenced incoming gate pass details: `manualGatePassNumber`, `gatePassNo`, `weightSlip`, `bagsReceived` (via lookup on `incomingGatePassIds` / `incomingGatePassId`).
+
+- **Gate Pass Models (Indexes)**
+  - Removed redundant field-level indexes from grading and incoming gate pass schemas; compound indexes retained for queries. Removed `orderDetails.size` index from grading gate pass. Similar index cleanup on nikasi, outgoing, and storage gate pass models. Cold storage, farmer-storage-link, farmer, and store-admin models: minor index/schema tweaks.
+
+---
+
 ## [1.13.0] - 2026-02-21
 
 ### Added
