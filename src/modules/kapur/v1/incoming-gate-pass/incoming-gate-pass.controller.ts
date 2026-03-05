@@ -3,6 +3,7 @@ import {
   createIncomingGatePass,
   updateIncomingGatePass,
   getIncomingGatePassesByColdStorage,
+  getIncomingGatePassesByFarmerStorageLinkId,
 } from './incoming-gate-pass.service.js';
 import {
   CreateIncomingGatePassInput,
@@ -301,6 +302,109 @@ export async function getIncomingGatePassesByColdStorageHandler(
     }
 
     // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving incoming gate passes for a specific farmer storage link.
+ * Ensures the link belongs to the authenticated user's cold storage.
+ */
+export async function getIncomingGatePassesByFarmerStorageLinkIdHandler(
+  request: FastifyRequest<{
+    Params: { farmerStorageLinkId: string };
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { farmerStorageLinkId } = request.params;
+
+    const result = await getIncomingGatePassesByFarmerStorageLinkId(
+      farmerStorageLinkId,
+      coldStorageId,
+      {},
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        incomingGatePasses: result.incomingGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params },
+      'Error in getIncomingGatePassesByFarmerStorageLinkIdHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
     return reply.code(500).send({
       success: false,
       error: {

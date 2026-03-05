@@ -2,9 +2,6 @@ import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { StorageGatePass } from './storage-gate-pass.model.js';
 import { StorageGatePassAudit } from './storage-gate-pass-audit.model.js';
-import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
-import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model.js';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   CreateStorageGatePassInput,
   CreateStorageGatePassBody,
@@ -17,437 +14,7 @@ import {
   ValidationError,
   AppError,
 } from '../../../../utils/errors.js';
-import type { IGradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
-import type {
-  IStorageGatePass,
-  IGradingGatePassSnapshot,
-} from './storage-gate-pass.model.js';
-
-/* =======================
-   TYPES (internal)
-======================= */
-
-interface ValidatedAllocation {
-  gradingGatePassId: string;
-  size: string;
-  quantityToAllocate: number;
-  chamber: string;
-  floor: string;
-  row: string;
-}
-
-interface GradingPassWithFilteredAllocations {
-  gradingGatePassId: string;
-  allocations: ValidatedAllocation[];
-}
-
-interface StorageOrderDetailInput {
-  size: string;
-  currentQuantity: number;
-  initialQuantity: number;
-  weightPerBag: number;
-  bagType: BagType;
-  chamber: string;
-  floor: string;
-  row: string;
-}
-
-/* =======================
-   INPUT VALIDATION (business rules after schema)
-======================= */
-
-/**
- * Validates and normalizes create input: filters zero-quantity allocations,
- * ensures at least one allocation per grading gate pass.
- */
-function validateStorageGatePassInput(
-  payload: CreateStorageGatePassInput,
-  logger?: FastifyBaseLogger
-): GradingPassWithFilteredAllocations[] {
-  const result: GradingPassWithFilteredAllocations[] = [];
-
-  for (const gp of payload.gradingGatePasses) {
-    const nonZeroAllocations = gp.allocations.filter(
-      (a) => a.quantityToAllocate > 0
-    );
-
-    if (nonZeroAllocations.length === 0) {
-      logger?.warn(
-        { gradingGatePassId: gp.gradingGatePassId },
-        'All allocations have zero quantity'
-      );
-      throw new ValidationError(
-        `Grading gate pass ${gp.gradingGatePassId}: at least one allocation must have quantity > 0`,
-        'INVALID_ALLOCATION_QUANTITY'
-      );
-    }
-
-    result.push({
-      gradingGatePassId: gp.gradingGatePassId,
-      allocations: nonZeroAllocations.map((a) => ({
-        gradingGatePassId: gp.gradingGatePassId,
-        size: a.size,
-        quantityToAllocate: a.quantityToAllocate,
-        chamber: a.chamber,
-        floor: a.floor,
-        row: a.row,
-      })),
-    });
-  }
-
-  return result;
-}
-
-/* =======================
-   BATCH FETCH & VALIDATE GRADING GATE PASSES
-======================= */
-
-/**
- * Fetches all grading gate passes in one query, validates existence and variety,
- * and validates sufficient quantity per allocation (optimistic check before bulk write).
- */
-async function fetchAndValidateGradingGatePasses(
-  payload: CreateStorageGatePassInput,
-  validated: GradingPassWithFilteredAllocations[],
-  session: ClientSession,
-  logger?: FastifyBaseLogger
-): Promise<Map<string, IGradingGatePass>> {
-  const gradingGatePassIds = validated.map(
-    (v) => new Types.ObjectId(v.gradingGatePassId)
-  );
-
-  const fetched = await GradingGatePass.find({
-    _id: { $in: gradingGatePassIds },
-  })
-    .session(session)
-    .lean();
-
-  logger?.info(
-    {
-      requestedCount: gradingGatePassIds.length,
-      foundCount: fetched.length,
-      requestedIds: gradingGatePassIds.map((id) => id.toString()),
-    },
-    'Fetched grading gate passes'
-  );
-
-  if (fetched.length !== gradingGatePassIds.length) {
-    const foundIds = new Set(fetched.map((f) => f._id.toString()));
-    const missingIds = gradingGatePassIds
-      .filter((id) => !foundIds.has(id.toString()))
-      .map((id) => id.toString());
-    logger?.warn(
-      { missingGradingGatePassIds: missingIds },
-      'Grading gate passes not found'
-    );
-    throw new NotFoundError(
-      `Grading gate pass(es) not found: ${missingIds.join(', ')}`,
-      'GRADING_GATE_PASS_NOT_FOUND'
-    );
-  }
-
-  const gradingPassMap = new Map<
-    string,
-    IGradingGatePass & { _id: Types.ObjectId }
-  >();
-  for (const gp of fetched) {
-    gradingPassMap.set(
-      (gp as { _id: Types.ObjectId })._id.toString(),
-      gp as IGradingGatePass & { _id: Types.ObjectId }
-    );
-  }
-
-  const expectedVariety = payload.variety.trim();
-
-  for (const item of validated) {
-    const gradingPass = gradingPassMap.get(item.gradingGatePassId);
-    if (!gradingPass) continue;
-
-    const gpVariety = (gradingPass as { variety: string }).variety?.trim();
-    if (gpVariety !== expectedVariety) {
-      logger?.warn(
-        {
-          gradingGatePassId: item.gradingGatePassId,
-          expected: expectedVariety,
-          actual: gpVariety,
-        },
-        'Variety mismatch'
-      );
-      throw new ValidationError(
-        `Variety mismatch for grading gate pass ${item.gradingGatePassId}: expected "${expectedVariety}", got "${gpVariety}"`,
-        'VARIETY_MISMATCH'
-      );
-    }
-
-    const orderDetails = (
-      gradingPass as {
-        orderDetails: Array<{ size: string; currentQuantity: number }>;
-      }
-    ).orderDetails;
-    const detailBySize = new Map(orderDetails.map((d) => [d.size, d]));
-
-    for (const alloc of item.allocations) {
-      const detail = detailBySize.get(alloc.size);
-      if (!detail) {
-        throw new ValidationError(
-          `Size "${alloc.size}" not found in grading gate pass ${item.gradingGatePassId}`,
-          'SIZE_NOT_FOUND'
-        );
-      }
-      if (detail.currentQuantity < alloc.quantityToAllocate) {
-        throw new ValidationError(
-          `Insufficient quantity for size "${alloc.size}" in grading gate pass ${item.gradingGatePassId}: available ${detail.currentQuantity}, requested ${alloc.quantityToAllocate}`,
-          'INSUFFICIENT_STOCK'
-        );
-      }
-    }
-  }
-
-  return gradingPassMap as unknown as Map<string, IGradingGatePass>;
-}
-
-/* =======================
-   BULK OPERATIONS FOR QUANTITY UPDATES
-======================= */
-
-/**
- * Prepares bulk updateOne ops for grading gate passes with optimistic locking.
- * Uses arrayFilters so the correct orderDetails element is updated by size
- * (positional $ can wrongly match the first element when using dot-notation filters).
- */
-function prepareBulkOperationsForStorage(
-  validated: GradingPassWithFilteredAllocations[]
-): mongoose.mongo.AnyBulkWriteOperation<IGradingGatePass>[] {
-  const bulkOps: Array<{
-    updateOne: {
-      filter: Record<string, unknown>;
-      update: Record<string, unknown>;
-      arrayFilters?: Array<Record<string, unknown>>;
-    };
-  }> = [];
-
-  for (const item of validated) {
-    for (const alloc of item.allocations) {
-      bulkOps.push({
-        updateOne: {
-          filter: {
-            _id: new Types.ObjectId(item.gradingGatePassId),
-          },
-          update: {
-            $inc: {
-              'orderDetails.$[elem].currentQuantity': -alloc.quantityToAllocate,
-            },
-          },
-          arrayFilters: [
-            {
-              'elem.size': alloc.size,
-              'elem.currentQuantity': { $gte: alloc.quantityToAllocate },
-            },
-          ],
-        },
-      });
-    }
-  }
-
-  return bulkOps as mongoose.mongo.AnyBulkWriteOperation<IGradingGatePass>[];
-}
-
-/* =======================
-   ALLOCATION STATUS UPDATES
-======================= */
-
-/**
- * For each grading gate pass, computes remaining quantities after allocations
- * and sets allocationStatus. Returns bulk update ops for status changes.
- */
-function buildAllocationStatusUpdates(
-  validated: GradingPassWithFilteredAllocations[],
-  gradingPassMap: Map<string, IGradingGatePass>
-): Array<{
-  updateOne: {
-    filter: Record<string, unknown>;
-    update: Record<string, unknown>;
-  };
-}> {
-  const statusOps: Array<{
-    updateOne: {
-      filter: Record<string, unknown>;
-      update: Record<string, unknown>;
-    };
-  }> = [];
-
-  for (const item of validated) {
-    const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
-      orderDetails: Array<{
-        size: string;
-        currentQuantity: number;
-        initialQuantity: number;
-      }>;
-    };
-    if (!gp?.orderDetails) continue;
-
-    const decrementsBySize = new Map<string, number>();
-    for (const alloc of item.allocations) {
-      const prev = decrementsBySize.get(alloc.size) ?? 0;
-      decrementsBySize.set(alloc.size, prev + alloc.quantityToAllocate);
-    }
-
-    let totalRemaining = 0;
-    let totalInitial = 0;
-    for (const od of gp.orderDetails) {
-      const dec = decrementsBySize.get(od.size) ?? 0;
-      totalRemaining += Math.max(0, od.currentQuantity - dec);
-      totalInitial += od.initialQuantity;
-    }
-
-    let newStatus: AllocationStatus;
-    if (totalRemaining === 0) {
-      newStatus = AllocationStatus.FULLY_ALLOCATED;
-    } else if (totalRemaining < totalInitial) {
-      newStatus = AllocationStatus.PARTIALLY_ALLOCATED;
-    } else {
-      newStatus = AllocationStatus.UNALLOCATED;
-    }
-
-    statusOps.push({
-      updateOne: {
-        filter: { _id: new Types.ObjectId(item.gradingGatePassId) },
-        update: { $set: { allocationStatus: newStatus } },
-      },
-    });
-  }
-
-  return statusOps;
-}
-
-/* =======================
-   STORAGE ORDER DETAILS (group by size + location)
-======================= */
-
-/**
- * Builds storage gate pass order details from validated allocations and grading pass data.
- * Groups by (size, chamber, floor, row) and sums quantities; gets bagType and weight from grading pass.
- */
-function buildStorageOrderDetails(
-  validated: GradingPassWithFilteredAllocations[],
-  gradingPassMap: Map<string, IGradingGatePass>
-): StorageOrderDetailInput[] {
-  type Key = string;
-  type Agg = {
-    quantity: number;
-    size: string;
-    chamber: string;
-    floor: string;
-    row: string;
-    bagType: BagType;
-    weightPerBag: number;
-  };
-  const map = new Map<Key, Agg>();
-
-  for (const item of validated) {
-    const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
-      orderDetails: Array<{
-        size: string;
-        bagType: BagType;
-        weightPerBagKg: number;
-      }>;
-    };
-    const detailBySize = new Map(
-      (gp?.orderDetails ?? []).map((d) => [
-        d.size,
-        { bagType: d.bagType, weightPerBagKg: d.weightPerBagKg },
-      ])
-    );
-
-    for (const alloc of item.allocations) {
-      const meta = detailBySize.get(alloc.size);
-      const bagType = meta?.bagType ?? BagType.JUTE;
-      const weightPerBag = meta?.weightPerBagKg ?? 0;
-
-      const key: Key = `${alloc.size}|${alloc.chamber}|${alloc.floor}|${alloc.row}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.quantity += alloc.quantityToAllocate;
-      } else {
-        map.set(key, {
-          quantity: alloc.quantityToAllocate,
-          size: alloc.size,
-          chamber: alloc.chamber,
-          floor: alloc.floor,
-          row: alloc.row,
-          bagType,
-          weightPerBag,
-        });
-      }
-    }
-  }
-
-  return [...map.values()].map((a) => ({
-    size: a.size,
-    currentQuantity: a.quantity,
-    initialQuantity: a.quantity,
-    weightPerBag: a.weightPerBag,
-    bagType: a.bagType,
-    chamber: a.chamber,
-    floor: a.floor,
-    row: a.row,
-  }));
-}
-
-/* =======================
-   GRADING GATE PASS SNAPSHOTS (remaining qty at creation time)
-======================= */
-
-/**
- * Builds snapshots of each grading gate pass state after allocations are applied.
- * Each snapshot has _id, gatePassNo, and incomingBagSizes (size, currentQuantity, initialQuantity).
- * currentQuantity = remaining quantity left in that grading pass after this storage pass.
- */
-function buildGradingGatePassSnapshots(
-  validated: GradingPassWithFilteredAllocations[],
-  gradingPassMap: Map<string, IGradingGatePass>
-): IGradingGatePassSnapshot[] {
-  const snapshots: IGradingGatePassSnapshot[] = [];
-
-  for (const item of validated) {
-    const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
-      _id: Types.ObjectId;
-      gatePassNo: number;
-      orderDetails: Array<{
-        size: string;
-        currentQuantity: number;
-        initialQuantity: number;
-      }>;
-    };
-    if (!gp?.orderDetails) continue;
-
-    const allocatedBySize = new Map<string, number>();
-    for (const alloc of item.allocations) {
-      allocatedBySize.set(
-        alloc.size,
-        (allocatedBySize.get(alloc.size) ?? 0) + alloc.quantityToAllocate
-      );
-    }
-
-    const incomingBagSizes = gp.orderDetails.map((od) => {
-      const allocated = allocatedBySize.get(od.size) ?? 0;
-      const remaining = Math.max(0, od.currentQuantity - allocated);
-      return {
-        size: od.size,
-        currentQuantity: remaining,
-        initialQuantity: od.initialQuantity,
-      };
-    });
-
-    snapshots.push({
-      _id: gp._id,
-      gatePassNo: gp.gatePassNo,
-      incomingBagSizes,
-    });
-  }
-
-  return snapshots;
-}
+import type { IStorageGatePass } from './storage-gate-pass.model.js';
 
 /* =======================
    ERROR HANDLER
@@ -493,8 +60,7 @@ function handleServiceError(error: unknown, logger?: FastifyBaseLogger): never {
 ======================= */
 
 /**
- * Creates a single storage gate pass: idempotency check, validate, fetch grading passes,
- * bulk update quantities with optimistic locking, update allocation statuses, create storage pass.
+ * Creates a single storage gate pass from payload (standalone; bagSizes provided directly).
  */
 async function createSingleStorageGatePass(
   payload: CreateStorageGatePassInput,
@@ -510,6 +76,7 @@ async function createSingleStorageGatePass(
     remarks,
     idempotencyKey,
     farmerStorageLinkId,
+    bagSizes,
   } = payload;
 
   if (idempotencyKey) {
@@ -525,7 +92,6 @@ async function createSingleStorageGatePass(
     }
   }
 
-  // Voucher must be unique per cold storage
   const FarmerStorageLink = mongoose.model('FarmerStorageLink');
   const link = await FarmerStorageLink.findById(farmerStorageLinkId)
     .session(session)
@@ -558,76 +124,22 @@ async function createSingleStorageGatePass(
     );
   }
 
-  const validated = validateStorageGatePassInput(payload, logger);
-
-  const gradingPassMap = await fetchAndValidateGradingGatePasses(
-    payload,
-    validated,
-    session,
-    logger
-  );
-
-  const bulkOps = prepareBulkOperationsForStorage(validated);
-  if (bulkOps.length === 0) {
-    throw new ValidationError(
-      'No allocations to apply',
-      'INVALID_ALLOCATION_QUANTITY'
-    );
-  }
-
-  const updateResult = await GradingGatePass.bulkWrite(
-    bulkOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
-    { session }
-  );
-
-  if (updateResult.modifiedCount !== bulkOps.length) {
-    logger?.warn(
-      { expected: bulkOps.length, modified: updateResult.modifiedCount },
-      'Concurrent modification detected on grading gate pass quantities'
-    );
-    throw new ConflictError(
-      `Expected ${bulkOps.length} updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
-      'CONCURRENT_MODIFICATION'
-    );
-  }
-
-  const statusOps = buildAllocationStatusUpdates(validated, gradingPassMap);
-  if (statusOps.length > 0) {
-    await GradingGatePass.bulkWrite(
-      statusOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
-      { session }
-    );
-    logger?.info(
-      {
-        gradingGatePassIds: validated.map((v) => v.gradingGatePassId),
-        count: statusOps.length,
-      },
-      'Updated allocation statuses'
-    );
-  }
-
-  const storageOrderDetails = buildStorageOrderDetails(
-    validated,
-    gradingPassMap
-  );
-
-  const gradingGatePassSnapshots = buildGradingGatePassSnapshots(
-    validated,
-    gradingPassMap
-  );
-
   const storageGatePass = new StorageGatePass({
     farmerStorageLinkId: new Types.ObjectId(farmerStorageLinkId),
     ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
     gatePassNo,
     ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
-    gradingGatePassIds: validated.map(
-      (v) => new Types.ObjectId(v.gradingGatePassId)
-    ),
-    gradingGatePassSnapshots,
     date,
     variety,
-    orderDetails: storageOrderDetails,
+    bagSizes: bagSizes.map((bs) => ({
+      size: bs.size,
+      currentQuantity: bs.currentQuantity,
+      initialQuantity: bs.initialQuantity,
+      bagType: bs.bagType,
+      chamber: bs.chamber,
+      floor: bs.floor,
+      row: bs.row,
+    })),
     editHistory: [],
     remarks: remarks ?? undefined,
     ...(idempotencyKey && { idempotencyKey }),
@@ -639,7 +151,6 @@ async function createSingleStorageGatePass(
     {
       storageGatePassId: storageGatePass._id,
       gatePassNo: storageGatePass.gatePassNo,
-      gradingGatePassIds: storageGatePass.gradingGatePassIds,
     },
     'Storage gate pass created'
   );
@@ -652,8 +163,7 @@ async function createSingleStorageGatePass(
 ======================= */
 
 /**
- * Creates a single storage gate pass from grading gate pass allocations.
- * One request = one storage gate pass; can reference multiple grading gate passes.
+ * Creates a single storage gate pass from payload (standalone; bagSizes in payload).
  * Uses a single MongoDB transaction; commits only if all steps succeed.
  */
 export async function createStorageGatePass(
@@ -667,7 +177,6 @@ export async function createStorageGatePass(
   try {
     logger?.info(
       {
-        gradingGatePassCount: payload.gradingGatePasses?.length ?? 0,
         variety: payload.variety,
         date: payload.date,
       },
@@ -686,7 +195,6 @@ export async function createStorageGatePass(
       {
         storageGatePassId: result._id,
         gatePassNo: result.gatePassNo,
-        gradingGatePassIds: result.gradingGatePassIds,
       },
       'Storage gate pass created'
     );
@@ -700,75 +208,40 @@ export async function createStorageGatePass(
 }
 
 /* =======================
-   BULK CREATE STORAGE GATE PASSES (transactional; one storage gate pass per grading gate pass)
+   BULK CREATE STORAGE GATE PASSES (transactional; one storage gate pass per payload item)
 ======================= */
 
 /**
- * Expands bulk payload into one CreateStorageGatePassInput per grading gate pass.
- * For each grading gate pass in the request there will be one storage gate pass.
- * Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each created pass.
+ * Assigns gate pass numbers to each pass per cold storage (first pass in payload per cold storage sets starting number, then increment).
  */
-async function expandBulkToSinglePayloads(
+function assignBulkGatePassNumbers(
   passes: CreateStorageGatePassInput[],
-  linkIdToColdStorage: Map<string, string>,
-  _farmerStorageLinkIdsByColdStorage: Map<string, Types.ObjectId[]>,
-  _session: ClientSession
-): Promise<CreateStorageGatePassInput[]> {
-  const flattened: Array<{
-    pass: CreateStorageGatePassInput;
-    gradingGatePass: CreateStorageGatePassInput['gradingGatePasses'][number];
-  }> = [];
-  for (const pass of passes) {
-    for (const gp of pass.gradingGatePasses) {
-      flattened.push({ pass, gradingGatePass: gp });
-    }
-  }
+  linkIdToColdStorage: Map<string, string>
+): CreateStorageGatePassInput[] {
+  const coldStorageState = new Map<string, { nextAvailable: number }>();
 
-  /** Per cold storage: next gate pass number to assign. Initialized from payload gatePassNo when first seen, then incremented. */
-  const coldStorageState = new Map<
-    string,
-    {
-      nextAvailable: number;
-    }
-  >();
-
-  const singlePayloads: CreateStorageGatePassInput[] = [];
-
-  for (const item of flattened) {
+  return passes.map((pass) => {
     const lid =
-      typeof item.pass.farmerStorageLinkId === 'string'
-        ? item.pass.farmerStorageLinkId
-        : (item.pass.farmerStorageLinkId as Types.ObjectId).toString();
+      typeof pass.farmerStorageLinkId === 'string'
+        ? pass.farmerStorageLinkId
+        : (pass.farmerStorageLinkId as Types.ObjectId).toString();
     const coldStorageId = linkIdToColdStorage.get(lid);
-    if (!coldStorageId) continue;
+    if (!coldStorageId) return pass;
 
     let state = coldStorageState.get(coldStorageId);
     if (!state) {
-      state = { nextAvailable: item.pass.gatePassNo };
+      state = { nextAvailable: pass.gatePassNo };
       coldStorageState.set(coldStorageId, state);
     }
     const gatePassNo = state.nextAvailable++;
 
-    singlePayloads.push({
-      farmerStorageLinkId: item.pass.farmerStorageLinkId,
-      gatePassNo,
-      ...(item.pass.manualGatePassNumber !== undefined && {
-        manualGatePassNumber: item.pass.manualGatePassNumber,
-      }),
-      date: item.pass.date,
-      variety: item.pass.variety,
-      gradingGatePasses: [item.gradingGatePass],
-      ...(item.pass.remarks !== undefined && { remarks: item.pass.remarks }),
-    });
-  }
-
-  return singlePayloads;
+    return { ...pass, gatePassNo };
+  });
 }
 
 /**
  * Creates multiple storage gate passes in a single transaction.
- * One storage gate pass is created per grading gate pass (expanded from the bulk payload).
- * Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each new pass.
+ * One storage gate pass is created per item in the payload; gate pass numbers are assigned per cold storage.
  * If any pass fails validation or DB rules, the entire operation is rolled back.
  */
 export async function createStorageGatePassBulk(
@@ -831,11 +304,9 @@ export async function createStorageGatePassBulk(
       }
     }
 
-    const singlePayloads = await expandBulkToSinglePayloads(
+    const singlePayloads = assignBulkGatePassNumbers(
       passes as CreateStorageGatePassInput[],
-      linkIdToColdStorage,
-      farmerStorageLinkIdsByColdStorage,
-      session
+      linkIdToColdStorage
     );
 
     const results: IStorageGatePass[] = [];
@@ -863,7 +334,7 @@ export async function createStorageGatePassBulk(
 }
 
 /* =======================
-   UPDATE STORAGE GATE PASS (unchanged flow; uses orderDetails in body)
+   UPDATE STORAGE GATE PASS (unchanged flow; uses bagSizes in body)
 ======================= */
 
 /**
@@ -894,22 +365,6 @@ export async function updateStorageGatePass(
         'Storage gate pass not found',
         'STORAGE_GATE_PASS_NOT_FOUND'
       );
-    }
-
-    if (payload.gradingGatePassIds) {
-      const gradingGatePasses = await GradingGatePass.find({
-        _id: { $in: payload.gradingGatePassIds },
-      });
-      if (gradingGatePasses.length !== payload.gradingGatePassIds.length) {
-        const foundIds = gradingGatePasses.map((gp) => gp._id.toString());
-        const missingIds = payload.gradingGatePassIds.filter(
-          (gid) => !foundIds.includes(gid)
-        );
-        throw new NotFoundError(
-          `Grading gate pass(es) not found: ${missingIds.join(', ')}`,
-          'GRADING_GATE_PASS_NOT_FOUND'
-        );
-      }
     }
 
     if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
@@ -960,11 +415,10 @@ export async function updateStorageGatePass(
     }> = [];
 
     const fieldsToCheck = [
-      'gradingGatePassIds',
       'gatePassNo',
       'date',
       'variety',
-      'orderDetails',
+      'bagSizes',
       'remarks',
     ] as const;
 
@@ -1042,16 +496,24 @@ export async function updateStorageGatePass(
   }
 }
 
+export interface StorageGatePassDateFilters {
+  dateFrom?: string; // YYYY-MM-DD, start of day
+  dateTo?: string; // YYYY-MM-DD, end of day
+  variety?: string; // Filter by variety (exact match after trim)
+}
+
 /**
- * Retrieves all storage gate passes for a cold storage (via grading gate passes linked to incoming → farmer storage links).
+ * Retrieves all storage gate passes for a cold storage (via farmer storage links for that cold storage).
  * @param coldStorageId - Cold storage ID
  * @param logger - Optional logger instance
+ * @param dateFilters - Optional dateFrom/dateTo (YYYY-MM-DD) to filter by storage gate pass date
  * @returns Array of storage gate passes
- * @throws ValidationError if cold storage ID format is invalid
+ * @throws ValidationError if cold storage ID format is invalid or date format invalid
  */
 export async function getStorageGatePassesByColdStorage(
   coldStorageId: string,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  dateFilters?: StorageGatePassDateFilters
 ) {
   try {
     if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
@@ -1063,7 +525,6 @@ export async function getStorageGatePassesByColdStorage(
 
     const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
 
-    // Get all farmer storage link IDs for this cold storage
     const FarmerStorageLink = mongoose.model('FarmerStorageLink');
     const farmerStorageLinkIds = await FarmerStorageLink.find({
       coldStorageId: coldStorageObjectId,
@@ -1071,37 +532,46 @@ export async function getStorageGatePassesByColdStorage(
       .distinct('_id')
       .lean();
 
-    // Get all incoming gate pass IDs for these farmer storage links
-    const IncomingGatePass = mongoose.model('IncomingGatePass');
-    const incomingGatePassIds = await IncomingGatePass.find({
+    const match: Record<string, unknown> = {
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .distinct('_id')
-      .lean();
+    };
 
-    // Get all grading gate pass IDs for these incoming gate passes
-    const gradingGatePassIds = await GradingGatePass.find({
-      incomingGatePassIds: { $in: incomingGatePassIds },
-    })
-      .distinct('_id')
-      .lean();
+    if (dateFilters?.dateFrom) {
+      const start = new Date(dateFilters.dateFrom);
+      if (Number.isNaN(start.getTime())) {
+        throw new ValidationError(
+          'Invalid dateFrom format; use YYYY-MM-DD',
+          'INVALID_DATE_FROM'
+        );
+      }
+      start.setUTCHours(0, 0, 0, 0);
+      match.date = (match.date as Record<string, unknown>) ?? {};
+      (match.date as Record<string, unknown>).$gte = start;
+    }
+    if (dateFilters?.dateTo) {
+      const end = new Date(dateFilters.dateTo);
+      if (Number.isNaN(end.getTime())) {
+        throw new ValidationError(
+          'Invalid dateTo format; use YYYY-MM-DD',
+          'INVALID_DATE_TO'
+        );
+      }
+      end.setUTCHours(23, 59, 59, 999);
+      match.date = (match.date as Record<string, unknown>) ?? {};
+      (match.date as Record<string, unknown>).$lte = end;
+    }
+    if (dateFilters?.variety != null && dateFilters.variety.trim() !== '') {
+      match.variety = dateFilters.variety.trim();
+    }
 
-    // Get all storage gate passes that reference any of these grading gate passes
-    const storageGatePasses = await StorageGatePass.find({
-      gradingGatePassIds: { $in: gradingGatePassIds },
-    })
+    const storageGatePasses = await StorageGatePass.find(match)
       .populate({
-        path: 'gradingGatePassIds',
-        populate: {
-          path: 'incomingGatePassIds',
-          populate: {
-            path: 'farmerStorageLinkId',
-            populate: [
-              { path: 'farmerId', select: 'name mobileNumber address' },
-              { path: 'linkedById', select: 'name' },
-            ],
-          },
-        },
+        path: 'farmerStorageLinkId',
+        select: 'accountNumber farmerId linkedById',
+        populate: [
+          { path: 'farmerId', select: 'name mobileNumber address' },
+          { path: 'linkedById', select: 'name' },
+        ],
       })
       .sort({ date: -1, gatePassNo: -1 })
       .lean();

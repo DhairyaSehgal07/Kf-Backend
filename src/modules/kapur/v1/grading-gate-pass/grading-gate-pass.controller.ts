@@ -216,7 +216,8 @@ export async function getGradingGatePassesByColdStorageHandler(
 }
 
 /**
- * Handler for retrieving grading gate passes by farmer-storage-link
+ * Handler for retrieving grading gate passes by farmer-storage-link.
+ * Ensures the link belongs to the authenticated user's cold storage. Returns all results (no pagination).
  */
 export async function getGradingGatePassesByFarmerStorageLinkHandler(
   request: FastifyRequest<{
@@ -225,20 +226,59 @@ export async function getGradingGatePassesByFarmerStorageLinkHandler(
   reply: FastifyReply
 ) {
   try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
     const gradingGatePasses = await getGradingGatePassesByFarmerStorageLink(
       request.params.farmerStorageLinkId,
+      coldStorageId,
       request.log
     );
 
     return reply.send({
       success: true,
-      data: gradingGatePasses,
+      data: {
+        gradingGatePasses,
+      },
     });
   } catch (error) {
     request.log.error(
       { error, params: request.params },
       'Error in getGradingGatePassesByFarmerStorageLinkHandler'
     );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
 
     if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({

@@ -142,20 +142,10 @@ async function fetchAndValidateStorageGatePasses(
       );
     }
 
-    const orderDetails = (
-      storagePass as {
-        orderDetails: Array<{
-          size: string;
-          chamber: string;
-          floor: string;
-          row: string;
-          currentQuantity: number;
-        }>;
-      }
-    ).orderDetails;
+    const bagSizes = storagePass.bagSizes;
 
     for (const alloc of item.allocations) {
-      const detail = orderDetails.find(
+      const detail = bagSizes.find(
         (d) =>
           d.size === alloc.size &&
           d.chamber === alloc.chamber &&

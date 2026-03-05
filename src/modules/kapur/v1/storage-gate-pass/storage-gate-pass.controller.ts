@@ -23,7 +23,7 @@ import { AuthenticatedRequest } from '../../../../utils/auth.js';
 
 /**
  * Handler for creating a single storage gate pass from grading gate pass allocations.
- * Payload: date, variety, gradingGatePasses (array of { gradingGatePassId, allocations }).
+ * Payload: date, variety, bagSizes (array of size, bagType, quantities, chamber, floor, row).
  * Optionally: gatePassNo (else auto-generated), remarks, idempotencyKey.
  */
 export async function createStorageGatePassHandler(
@@ -33,7 +33,7 @@ export async function createStorageGatePassHandler(
   try {
     request.log.info(
       {
-        gradingGatePassCount: request.body.gradingGatePasses?.length ?? 0,
+        bagSizesCount: request.body.bagSizes?.length ?? 0,
         variety: request.body.variety,
         date: request.body.date,
       },

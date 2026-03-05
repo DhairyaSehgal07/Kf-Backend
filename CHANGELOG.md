@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-03-05
+
+### Added
+
+- **Incoming Gate Pass – By farmer storage link**
+  - GET `/api/v1/incoming-gate-pass/farmer-storage-link/:farmerStorageLinkId` – returns all incoming gate passes for the given farmer storage link (no pagination). Validates that the link belongs to the authenticated store admin's cold storage. Response: `{ data: { incomingGatePasses } }`. Returns 401 when cold storage is missing; 404 when link not found or access denied.
+
+- **Store Gate Pass controller**
+  - Store-facing storage gate pass controller with create, bulk create, update, list by cold storage, and list grouped by manual gate pass number and date; consistent error handling (401, 404, 409, 422, 500).
+
+### Changed
+
+- **Grading Gate Pass – Farmer storage link**
+  - GET `/api/v1/grading-gate-pass/farmer-storage-link/:farmerStorageLinkId` now validates that the farmer storage link belongs to the authenticated cold storage. Returns 401 when cold storage is missing; 404 when link not found or does not belong to cold storage. Response shape: `{ data: { gradingGatePasses } }`.
+
+- **Storage Gate Pass**
+  - Model and schema refactored: `orderDetails` replaced with `bagSizes` (size, currentQuantity, initialQuantity, bagType, chamber, floor, row); removed `weightPerBag`, `gradingGatePassIds`, and `gradingGatePassSnapshots`. Service and create/update flows updated accordingly.
+
+- **Outgoing Gate Pass**
+  - Service now uses `bagSizes` (instead of `orderDetails`) when validating storage gate pass allocations for outgoing gate pass creation.
+
+---
+
 ## [1.14.0] - 2026-02-28
 
 ### Added

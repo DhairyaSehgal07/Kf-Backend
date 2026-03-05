@@ -618,14 +618,18 @@ export async function getGradingGatePassesByColdStorage(
 }
 
 /**
- * Retrieves all grading gate passes for a given farmer-storage-link
+ * Retrieves all grading gate passes for a given farmer-storage-link (no pagination).
+ * Validates that the farmer storage link belongs to the given cold storage.
  * @param farmerStorageLinkId - Farmer storage link ID
+ * @param coldStorageId - Cold storage ID (for validation - link must belong to this cold storage)
  * @param logger - Optional logger instance
  * @returns Array of grading gate passes
- * @throws ValidationError if farmer storage link ID format is invalid
+ * @throws ValidationError if IDs are invalid
+ * @throws NotFoundError if farmer storage link not found or does not belong to cold storage
  */
 export async function getGradingGatePassesByFarmerStorageLink(
   farmerStorageLinkId: string,
+  coldStorageId: string,
   logger?: FastifyBaseLogger
 ) {
   try {
@@ -633,6 +637,29 @@ export async function getGradingGatePassesByFarmerStorageLink(
       throw new ValidationError(
         'Invalid farmer storage link ID format',
         'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const link = await FarmerStorageLink.findOne({
+      _id: new mongoose.Types.ObjectId(farmerStorageLinkId),
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+    }).lean();
+
+    if (!link) {
+      logger?.warn(
+        { farmerStorageLinkId, coldStorageId },
+        'Farmer storage link not found or does not belong to cold storage'
+      );
+      throw new NotFoundError(
+        'Farmer storage link not found or access denied',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
       );
     }
 
@@ -663,7 +690,7 @@ export async function getGradingGatePassesByFarmerStorageLink(
 
     return gradingGatePasses;
   } catch (error) {
-    if (error instanceof ValidationError) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
       throw error;
     }
 

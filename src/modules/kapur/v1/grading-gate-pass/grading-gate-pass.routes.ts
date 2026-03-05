@@ -196,27 +196,65 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
     getGradingGatePassesByColdStorageHandler as never
   );
 
-  // Get grading gate passes for a farmer-storage-link (param: farmerStorageLinkId)
+  // Get all grading gate passes for a specific farmer storage link (all results, no pagination)
   fastify.get(
     '/farmer-storage-link/:farmerStorageLinkId',
     {
       schema: {
         ...getGradingGatePassesByFarmerStorageLinkSchema,
         description:
-          'Get all grading gate passes for a given farmer-storage-link',
+          "Get all grading gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination).",
         tags: ['Grading Gate Pass'],
         summary: 'Get grading gate passes by farmer storage link',
         response: {
           200: {
-            description: 'List of grading gate passes for the farmer',
+            description:
+              'List of all grading gate passes for the farmer storage link',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: true,
+                type: 'object',
+                properties: {
+                  gradingGatePasses: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      additionalProperties: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Farmer storage link not found or does not belong to your cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: {
+                    type: 'string',
+                    example: 'FARMER_STORAGE_LINK_NOT_FOUND',
+                  },
+                  message: { type: 'string' },
                 },
               },
             },

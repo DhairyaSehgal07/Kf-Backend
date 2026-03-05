@@ -1,37 +1,28 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { BagType } from './storage-gate-pass.model.js';
 
 /* =======================
-   Allocation-based Create (from grading gate passes)
+   Bag size (for create/update)
 ======================= */
 
-const allocationSchema = z.object({
+const bagSizeSchema = z.object({
   size: z.string().trim().min(1, 'Size is required'),
-  quantityToAllocate: z.coerce
+  bagType: z.nativeEnum(BagType),
+  currentQuantity: z.coerce
     .number()
     .int()
-    .min(0, 'Quantity to allocate must be non-negative'),
+    .min(0, 'Current quantity must be non-negative'),
+  initialQuantity: z.coerce
+    .number()
+    .int()
+    .min(0, 'Initial quantity must be non-negative'),
   chamber: z.string().trim().min(1, 'Chamber is required'),
   floor: z.string().trim().min(1, 'Floor is required'),
   row: z.string().trim().min(1, 'Row is required'),
 });
 
-const gradingGatePassAllocationSchema = z.object({
-  gradingGatePassId: z
-    .string()
-    .trim()
-    .min(1, 'Grading gate pass ID is required')
-    .refine(
-      (val) => mongoose.Types.ObjectId.isValid(val),
-      'Invalid grading gate pass ID format'
-    ),
-  allocations: z
-    .array(allocationSchema)
-    .min(1, 'At least one allocation is required'),
-});
-
-/** Single storage gate pass create input (allocations from grading gate passes) */
+/** Single storage gate pass create input (standalone, with bag sizes) */
 const singleStorageGatePassCreateSchema = z.object({
   farmerStorageLinkId: z
     .string()
@@ -61,9 +52,7 @@ const singleStorageGatePassCreateSchema = z.object({
     .min(1, 'Variety is required')
     .max(100, 'Variety must not exceed 100 characters'),
 
-  gradingGatePasses: z
-    .array(gradingGatePassAllocationSchema)
-    .min(1, 'At least one grading gate pass with allocations is required'),
+  bagSizes: z.array(bagSizeSchema).min(1, 'At least one bag size is required'),
 
   remarks: z
     .string()
@@ -79,28 +68,7 @@ const singleStorageGatePassCreateSchema = z.object({
     .optional(),
 });
 
-/* =======================
-   Update schema (order details for editing existing pass)
-======================= */
-
-const orderDetailSchema = z.object({
-  size: z.string().trim().min(1, 'Size is required'),
-  bagType: z.nativeEnum(BagType),
-  currentQuantity: z.coerce
-    .number()
-    .int()
-    .min(0, 'Current quantity must be non-negative'),
-  initialQuantity: z.coerce
-    .number()
-    .int()
-    .min(0, 'Initial quantity must be non-negative'),
-  weightPerBag: z.coerce.number().min(0, 'Weight per bag must be non-negative'),
-  chamber: z.string().trim().min(1, 'Chamber is required'),
-  floor: z.string().trim().min(1, 'Floor is required'),
-  row: z.string().trim().min(1, 'Row is required'),
-});
-
-/** Create: one request = one storage gate pass (can reference multiple grading gate passes) */
+/** Create: one request = one storage gate pass */
 export const createStorageGatePassSchema = z.object({
   body: singleStorageGatePassCreateSchema,
 });
@@ -133,20 +101,6 @@ export const updateStorageGatePassSchema = z.object({
       ),
   }),
   body: z.object({
-    gradingGatePassIds: z
-      .array(
-        z
-          .string()
-          .trim()
-          .min(1, 'Grading gate pass ID is required')
-          .refine(
-            (val) => mongoose.Types.ObjectId.isValid(val),
-            'Invalid grading gate pass ID format'
-          )
-      )
-      .min(1, 'At least one grading gate pass ID is required')
-      .optional(),
-
     gatePassNo: z.coerce
       .number()
       .int('Gate pass number must be an integer')
@@ -162,9 +116,9 @@ export const updateStorageGatePassSchema = z.object({
       .max(100, 'Variety must not exceed 100 characters')
       .optional(),
 
-    orderDetails: z
-      .array(orderDetailSchema)
-      .min(1, 'At least one order detail is required')
+    bagSizes: z
+      .array(bagSizeSchema)
+      .min(1, 'At least one bag size is required')
       .optional(),
 
     remarks: z

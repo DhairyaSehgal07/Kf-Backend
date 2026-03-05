@@ -430,6 +430,13 @@ export interface GetIncomingGatePassesByColdStorageOptions {
   status?: 'graded' | 'ungraded';
 }
 
+/** Options for getIncomingGatePassesByFarmerStorageLinkId (sort + optional filter by grading) */
+export interface GetIncomingGatePassesByFarmerStorageLinkIdOptions {
+  sortOrder?: 'asc' | 'desc';
+  /** When "graded", only vouchers with gradingSummary.graded === true; when "ungraded", only gradingSummary.graded === false */
+  status?: 'graded' | 'ungraded';
+}
+
 /** Pagination metadata for incoming gate passes list */
 export interface IncomingGatePassesPagination {
   page: number;
@@ -562,6 +569,117 @@ export async function getIncomingGatePassesByColdStorage(
     logger?.error(
       { error, coldStorageId },
       'Error retrieving incoming gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve incoming gate passes',
+      500,
+      'GET_INCOMING_GATE_PASSES_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves all incoming gate passes for a specific farmer storage link (no pagination).
+ * Validates that the farmer storage link belongs to the given cold storage.
+ * @param farmerStorageLinkId - Farmer storage link ID
+ * @param coldStorageId - Cold storage ID (for validation - link must belong to this cold storage)
+ * @param options - Optional sortOrder (default 'desc'), status filter
+ * @param logger - Optional logger instance
+ * @returns Object with incomingGatePasses array (all results)
+ * @throws ValidationError if IDs are invalid
+ * @throws NotFoundError if farmer storage link not found or does not belong to cold storage
+ */
+export async function getIncomingGatePassesByFarmerStorageLinkId(
+  farmerStorageLinkId: string,
+  coldStorageId: string,
+  options: GetIncomingGatePassesByFarmerStorageLinkIdOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{
+  incomingGatePasses: Array<Record<string, unknown>>;
+}> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
+      throw new ValidationError(
+        'Invalid farmer storage link ID format',
+        'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const link = await FarmerStorageLink.findOne({
+      _id: new mongoose.Types.ObjectId(farmerStorageLinkId),
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+    }).lean();
+
+    if (!link) {
+      logger?.warn(
+        { farmerStorageLinkId, coldStorageId },
+        'Farmer storage link not found or does not belong to cold storage'
+      );
+      throw new NotFoundError(
+        'Farmer storage link not found or access denied',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    const sortOrder = options.sortOrder ?? 'desc';
+    const sortDir = sortOrder === 'desc' ? -1 : 1;
+
+    const filter: Record<string, unknown> = {
+      farmerStorageLinkId: new mongoose.Types.ObjectId(farmerStorageLinkId),
+    };
+    if (options.status === 'graded') {
+      filter['gradingSummary.graded'] = true;
+    } else if (options.status === 'ungraded') {
+      filter.$or = [
+        { 'gradingSummary.graded': false },
+        { 'gradingSummary.graded': { $exists: false } },
+      ];
+    }
+
+    const incomingGatePasses = await IncomingGatePass.find(filter)
+      .populate({
+        path: 'farmerStorageLinkId',
+        populate: [
+          { path: 'farmerId', select: 'name mobileNumber address' },
+          { path: 'linkedById', select: 'name' },
+        ],
+      })
+      .populate('createdBy', 'name mobileNumber')
+      .sort({ date: sortDir, gatePassNo: sortDir })
+      .lean();
+
+    logger?.info(
+      { farmerStorageLinkId, count: incomingGatePasses.length },
+      'Retrieved incoming gate passes by farmer storage link'
+    );
+
+    const items = incomingGatePasses.map((pass) => ({
+      ...pass,
+      gradingSummary: {
+        totalGradedBags: pass.gradingSummary?.totalGradedBags ?? 0,
+        graded: pass.gradingSummary?.graded ?? false,
+      },
+    }));
+
+    return {
+      incomingGatePasses: items as Array<Record<string, unknown>>,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, farmerStorageLinkId },
+      'Error retrieving incoming gate passes by farmer storage link'
     );
 
     throw new AppError(

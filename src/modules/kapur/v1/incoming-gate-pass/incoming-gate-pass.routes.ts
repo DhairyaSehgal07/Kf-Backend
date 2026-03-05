@@ -3,6 +3,7 @@ import {
   createIncomingGatePassHandler,
   updateIncomingGatePassHandler,
   getIncomingGatePassesByColdStorageHandler,
+  getIncomingGatePassesByFarmerStorageLinkIdHandler,
 } from './incoming-gate-pass.controller.js';
 import {
   createIncomingGatePassSchema,
@@ -254,6 +255,100 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getIncomingGatePassesByColdStorageHandler as never
+  );
+
+  // Get incoming gate passes for a specific farmer storage link (all results, no pagination)
+  fastify.get(
+    '/farmer-storage-link/:farmerStorageLinkId',
+    {
+      schema: {
+        description:
+          "Get all incoming gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination).",
+        tags: ['Incoming Gate Pass'],
+        summary: 'Get incoming gate passes by farmer storage link',
+        params: {
+          type: 'object',
+          required: ['farmerStorageLinkId'],
+          properties: {
+            farmerStorageLinkId: {
+              type: 'string',
+              description: 'Farmer storage link ID',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'List of all incoming gate passes for the farmer storage link',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  incomingGatePasses: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        gradingSummary: {
+                          type: 'object',
+                          properties: {
+                            totalGradedBags: { type: 'number' },
+                            graded: { type: 'boolean' },
+                          },
+                        },
+                      },
+                      additionalProperties: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Farmer storage link not found or does not belong to your cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: {
+                    type: 'string',
+                    example: 'FARMER_STORAGE_LINK_NOT_FOUND',
+                  },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassesByFarmerStorageLinkIdHandler as never
   );
 
   // Update incoming gate pass
