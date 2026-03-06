@@ -42,8 +42,9 @@ export interface OverviewResult {
  * - totalGradingBags: sum of initial and current quantities from grading order details
  * - totalGradingWeight: sum over grading lines of (quantity * (weightPerBagKg - bagTypeWeight)), JUTE=0.7kg, LENO=0.06kg
  * - totalUngradedBags / totalUngradedWeight: incoming vouchers that have no grading voucher associated (same weight formula as incoming)
- * - totalBagsStored: sum of orderDetails[].initialQuantity across storage gate passes
- * - totalBagsDispatched: sum of orderDetails[].quantityIssued across nikasi gate passes
+ * - totalBagsStored: sum of bagSizes[].initialQuantity across all storage gate passes
+ * - totalBagsDispatched: sum of orderDetails[].quantityIssued across nikasi (dispatch) gate passes
+ * - totalOutgoingBags: sum of orderDetails[].quantityIssued across outgoing gate passes
  */
 export async function getOverview(
   coldStorageId: string,
@@ -279,16 +280,16 @@ export async function getOverview(
 
     totalGradingWeight = Math.round(totalGradingWeight * 100) / 100;
 
-    // Storage gate pass: sum of orderDetails[].initialQuantity (bags stored)
+    // Storage gate pass: sum of bagSizes[].initialQuantity across all storage gate passes (bags stored)
     const [storageAgg] = await StorageGatePass.aggregate<{
       totalBagsStored: number;
     }>([
       { $match: matchStorage },
-      { $unwind: '$orderDetails' },
+      { $unwind: '$bagSizes' },
       {
         $group: {
           _id: null,
-          totalBagsStored: { $sum: '$orderDetails.initialQuantity' },
+          totalBagsStored: { $sum: '$bagSizes.initialQuantity' },
         },
       },
       { $project: { _id: 0, totalBagsStored: 1 } },

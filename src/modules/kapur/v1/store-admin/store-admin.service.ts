@@ -1824,7 +1824,8 @@ export type VoucherType = (typeof VOUCHER_TYPES)[number];
 
 /**
  * Get the next voucher (gate pass) number for the given cold storage and voucher type.
- * Scopes the max gatePassNo to documents that belong to this cold storage via the link chain.
+ * Returns (count of existing gate passes of that type for this cold storage) + 1,
+ * so the sequence is global per cold storage, irrespective of farmer/link.
  */
 export async function getNextVoucherNumber(
   coldStorageId: string,
@@ -1833,104 +1834,54 @@ export async function getNextVoucherNumber(
 ): Promise<number> {
   const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
 
-  // Farmer storage link IDs for this cold storage (used for incoming → grading chain)
+  // Farmer storage link IDs for this cold storage
   const farmerStorageLinkIds = await FarmerStorageLink.find({
     coldStorageId: coldStorageObjectId,
   })
     .distinct('_id')
     .lean();
 
+  const filter = { farmerStorageLinkId: { $in: farmerStorageLinkIds } };
+
   if (type === 'incoming-gate-pass') {
-    const last = await IncomingGatePass.findOne({
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await IncomingGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
   if (type === 'rental-storage-gate-pass') {
-    const last = await RentalStorageGatePass.findOne({
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await RentalStorageGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
   if (type === 'grading-gate-pass') {
-    const incomingIds = await IncomingGatePass.find({
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .distinct('_id')
-      .lean();
-    const last = await GradingGatePass.findOne({
-      incomingGatePassIds: { $in: incomingIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await GradingGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
-  // For storage, nikasi, outgoing we need grading gate pass IDs belonging to this cold storage
-  const incomingIdsForGrading = await IncomingGatePass.find({
-    farmerStorageLinkId: { $in: farmerStorageLinkIds },
-  })
-    .distinct('_id')
-    .lean();
-  const gradingGatePassIds = await GradingGatePass.find({
-    incomingGatePassIds: { $in: incomingIdsForGrading },
-  })
-    .distinct('_id')
-    .lean();
-
   if (type === 'storage-gate-pass') {
-    const last = await StorageGatePass.findOne({
-      gradingGatePassIds: { $in: gradingGatePassIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await StorageGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
   if (type === 'nikasi-gate-pass') {
-    const last = await NikasiGatePass.findOne({
-      gradingGatePassIds: { $in: gradingGatePassIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await NikasiGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
   if (type === 'outgoing-gate-pass') {
-    const storageGatePassIds = await StorageGatePass.find({
-      gradingGatePassIds: { $in: gradingGatePassIds },
-    })
-      .distinct('_id')
-      .lean();
-    const last = await OutgoingGatePass.findOne({
-      storageGatePassIds: { $in: storageGatePassIds },
-    })
-      .sort({ gatePassNo: -1 })
-      .select('gatePassNo')
-      .lean();
-    const next = (last?.gatePassNo ?? 0) + 1;
-    logger?.debug({ coldStorageId, type, next }, 'Next voucher number');
+    const count = await OutgoingGatePass.countDocuments(filter);
+    const next = count + 1;
+    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
