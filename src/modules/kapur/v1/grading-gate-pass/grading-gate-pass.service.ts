@@ -537,7 +537,6 @@ export async function getGradingGatePassesByColdStorage(
       .distinct('_id')
       .lean();
 
-    // Get all incoming gate pass IDs for these farmer storage links
     const IncomingGatePass = mongoose.model('IncomingGatePass');
     const incomingGatePassIds = await IncomingGatePass.find({
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
