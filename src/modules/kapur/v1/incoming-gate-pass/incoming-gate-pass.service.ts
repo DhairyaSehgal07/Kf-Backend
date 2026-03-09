@@ -419,7 +419,7 @@ export async function updateIncomingGatePass(
   }
 }
 
-/** Options for getIncomingGatePassesByColdStorage (pagination + sort + search by gate pass number + filter by grading) */
+/** Options for getIncomingGatePassesByColdStorage (pagination + sort + search by gate pass number + filter by grading + date range) */
 export interface GetIncomingGatePassesByColdStorageOptions {
   limit?: number;
   page?: number;
@@ -428,6 +428,10 @@ export interface GetIncomingGatePassesByColdStorageOptions {
   gatePassNo?: number;
   /** When "graded", only vouchers with gradingSummary.graded === true; when "ungraded", only gradingSummary.graded === false */
   status?: 'graded' | 'ungraded';
+  /** Filter by date range (inclusive). ISO date string, e.g. 2026-03-01 */
+  dateFrom?: string;
+  /** Filter by date range (inclusive). ISO date string, e.g. 2026-03-07 */
+  dateTo?: string;
 }
 
 /** Options for getIncomingGatePassesByFarmerStorageLinkId (sort + optional filter by grading) */
@@ -501,6 +505,33 @@ export async function getIncomingGatePassesByColdStorage(
         { 'gradingSummary.graded': false },
         { 'gradingSummary.graded': { $exists: false } },
       ];
+    }
+    // Date range filter (inclusive): dateFrom start of day, dateTo end of day
+    if (options.dateFrom != null || options.dateTo != null) {
+      const dateConditions: Record<string, unknown> = {};
+      if (options.dateFrom != null) {
+        const from = new Date(options.dateFrom);
+        if (Number.isNaN(from.getTime())) {
+          throw new ValidationError(
+            'Invalid dateFrom format. Use ISO date, e.g. 2026-03-01',
+            'INVALID_DATE_FROM'
+          );
+        }
+        from.setUTCHours(0, 0, 0, 0);
+        dateConditions.$gte = from;
+      }
+      if (options.dateTo != null) {
+        const to = new Date(options.dateTo);
+        if (Number.isNaN(to.getTime())) {
+          throw new ValidationError(
+            'Invalid dateTo format. Use ISO date, e.g. 2026-03-07',
+            'INVALID_DATE_TO'
+          );
+        }
+        to.setUTCHours(23, 59, 59, 999);
+        dateConditions.$lte = to;
+      }
+      filter.date = dateConditions;
     }
 
     const [total, incomingGatePasses] = await Promise.all([

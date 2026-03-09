@@ -573,6 +573,7 @@ export async function getStorageGatePassesByColdStorage(
           { path: 'linkedById', select: 'name' },
         ],
       })
+      .populate({ path: 'createdBy', select: 'name' })
       .sort({ date: -1, gatePassNo: -1 })
       .lean();
 

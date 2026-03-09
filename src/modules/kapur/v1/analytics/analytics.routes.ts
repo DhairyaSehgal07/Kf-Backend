@@ -3,6 +3,8 @@ import {
   getAnalyticsHandler,
   getOverviewHandler,
 } from './analytics.controller.js';
+import { incomingAnalyticsRoutes } from './incoming.routes.js';
+import { gradingAnalyticsRoutes } from './grading.routes.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 /**
@@ -110,4 +112,10 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
     },
     getOverviewHandler as never
   );
+
+  // Incoming analytics (variety distribution, daily/monthly trend) at /api/v1/analytics/...
+  await fastify.register(incomingAnalyticsRoutes);
+
+  // Grading analytics (size distribution, area-wise, farmers-stock-by-filters) at /api/v1/analytics/...
+  await fastify.register(gradingAnalyticsRoutes);
 }

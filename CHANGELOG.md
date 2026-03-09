@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-03-09
+
+### Added
+
+- **Analytics – Chart and report data**
+  - New analytics endpoints for chart data and farmers stock (authenticated, optional `dateFrom`/`dateTo` where applicable):
+    - GET `/api/v1/analytics/variety-distribution` – variety distribution (bags per variety) from incoming gate passes; response `chartData` shaped for Recharts (e.g. PieChart).
+    - GET `/api/v1/analytics/daily-monthly-trend` – daily and monthly trend from incoming gate passes; response includes daily and monthly aggregates.
+    - GET `/api/v1/analytics/size-distribution` – size-wise distribution from grading gate passes, by variety; response `chartData` for Recharts.
+    - GET `/api/v1/analytics/area-wise-size-distribution` – area-wise size distribution from grading by variety (area from farmer address).
+    - GET `/api/v1/analytics/farmers-stock-by-filters` – farmers in a given area with varieties and sizes (stock); required query `area` (case-insensitive substring match on farmer address).
+  - Analytics overview (GET `/api/v1/analytics/overview`) now includes `totalBagsStored` and `totalBagsDispatched` in addition to existing aggregates.
+  - New route modules: `incoming.routes.ts` and `grading.routes.ts` under analytics, registered from main analytics routes.
+
+### Changed
+
+- **Incoming Gate Pass – List**
+  - GET `/api/v1/incoming-gate-pass` supports date range filter: optional `dateFrom` and `dateTo` (inclusive, ISO date e.g. 2026-03-01).
+
+- **Storage Gate Pass**
+  - List by cold storage (`getStorageGatePassesByColdStorage`) now populates `createdBy` with `name` on each storage gate pass.
+
+---
+
 ## [1.15.0] - 2026-03-05
 
 ### Added

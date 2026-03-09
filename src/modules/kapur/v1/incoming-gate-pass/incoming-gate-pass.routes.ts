@@ -144,7 +144,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc), search by gatePassNo, and filter by grading (status=graded|ungraded). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false.",
+          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc), search by gatePassNo, filter by grading (status=graded|ungraded), and date range (dateFrom, dateTo). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false. Use dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07) for inclusive date range.",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate passes for my cold storage',
         querystring: {
@@ -170,6 +170,18 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
               enum: ['graded', 'ungraded'],
               description:
                 'Filter by grading: graded = gradingSummary.graded true, ungraded = false.',
+            },
+            dateFrom: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range start (inclusive). ISO date string, e.g. 2026-03-01.',
+            },
+            dateTo: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
             },
           },
         },

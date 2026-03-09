@@ -213,6 +213,8 @@ export async function getIncomingGatePassesByColdStorageHandler(
       sortOrder?: 'asc' | 'desc';
       gatePassNo?: number;
       status?: 'graded' | 'ungraded';
+      dateFrom?: string;
+      dateTo?: string;
     };
   }>,
   reply: FastifyReply
@@ -241,10 +243,12 @@ export async function getIncomingGatePassesByColdStorageHandler(
     const sortOrder = query.sortOrder ?? 'desc';
     const gatePassNo = query.gatePassNo;
     const status = query.status;
+    const dateFrom = query.dateFrom;
+    const dateTo = query.dateTo;
 
     const result = await getIncomingGatePassesByColdStorage(
       coldStorageId,
-      { limit, page, sortOrder, gatePassNo, status },
+      { limit, page, sortOrder, gatePassNo, status, dateFrom, dateTo },
       request.log
     );
 
