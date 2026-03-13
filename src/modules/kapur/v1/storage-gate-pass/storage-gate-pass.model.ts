@@ -40,6 +40,7 @@ export interface IStorageGatePass extends Document {
 
   date: Date;
   variety: string;
+  storageCategory: string;
 
   bagSizes: IBagSize[];
 
@@ -178,6 +179,12 @@ const StorageGatePassSchema = new Schema<IStorageGatePass>(
       required: true,
       trim: true,
       index: true,
+    },
+
+    storageCategory: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     bagSizes: {

@@ -562,7 +562,7 @@ export async function getGradingGatePassesByColdStorage(
         .populate({
           path: 'incomingGatePassIds',
           select:
-            'gatePassNo manualGatePassNumber date bagsReceived weightSlip.grossWeightKg weightSlip.tareWeightKg',
+            'gatePassNo manualGatePassNumber truckNumber date bagsReceived weightSlip.grossWeightKg weightSlip.tareWeightKg',
         })
         .populate('createdBy', 'name mobileNumber')
         .sort({ date: sortDir, gatePassNo: sortDir })

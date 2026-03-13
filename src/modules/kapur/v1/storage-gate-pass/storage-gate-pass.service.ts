@@ -73,6 +73,7 @@ async function createSingleStorageGatePass(
     manualGatePassNumber,
     date,
     variety,
+    storageCategory,
     remarks,
     idempotencyKey,
     farmerStorageLinkId,
@@ -131,6 +132,7 @@ async function createSingleStorageGatePass(
     ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
     date,
     variety,
+    storageCategory,
     bagSizes: bagSizes.map((bs) => ({
       size: bs.size,
       currentQuantity: bs.currentQuantity,

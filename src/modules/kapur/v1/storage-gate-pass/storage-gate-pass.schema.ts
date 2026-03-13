@@ -52,6 +52,8 @@ const singleStorageGatePassCreateSchema = z.object({
     .min(1, 'Variety is required')
     .max(100, 'Variety must not exceed 100 characters'),
 
+  storageCategory: z.string().trim().min(1, 'Storage category is required'),
+
   bagSizes: z.array(bagSizeSchema).min(1, 'At least one bag size is required'),
 
   remarks: z
