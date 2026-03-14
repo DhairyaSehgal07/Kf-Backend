@@ -551,7 +551,7 @@ export async function getIncomingGatePassesByColdStorage(
           ],
         })
         .populate('createdBy', 'name mobileNumber')
-        .sort({ date: sortDir, gatePassNo: sortDir })
+        .sort({ gatePassNo: sortDir, date: sortDir })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -684,7 +684,7 @@ export async function getIncomingGatePassesByFarmerStorageLinkId(
         ],
       })
       .populate('createdBy', 'name mobileNumber')
-      .sort({ date: sortDir, gatePassNo: sortDir })
+      .sort({ gatePassNo: sortDir, date: sortDir })
       .lean();
 
     logger?.info(

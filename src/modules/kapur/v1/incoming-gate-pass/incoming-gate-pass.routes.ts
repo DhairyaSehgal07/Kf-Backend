@@ -144,7 +144,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc), search by gatePassNo, filter by grading (status=graded|ungraded), and date range (dateFrom, dateTo). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false. Use dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07) for inclusive date range.",
+          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo, filter by grading (status=graded|ungraded), and date range (dateFrom, dateTo). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false. Use dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07) for inclusive date range.",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate passes for my cold storage',
         querystring: {
@@ -158,7 +158,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
             sortOrder: {
               type: 'string',
               enum: ['asc', 'desc'],
-              description: 'Sort by date (default desc)',
+              description: 'Sort by gate pass number (default desc)',
             },
             gatePassNo: {
               type: 'number',

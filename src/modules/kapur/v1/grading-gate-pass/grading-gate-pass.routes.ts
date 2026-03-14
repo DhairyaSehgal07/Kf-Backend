@@ -101,7 +101,7 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...getGradingGatePassesByStoreSchema,
         description:
-          "Get grading gate passes for the current logged-in store (authenticated store admin's cold storage). Supports pagination (limit default 10, page), sortOrder (asc | desc), and search by gatePassNo. If gatePassNo is provided and no match exists, returns 404.",
+          "Get grading gate passes for the current logged-in store (authenticated store admin's cold storage). Supports pagination (limit default 10, page), sortOrder (asc | desc) by gate pass number (default desc), and search by gatePassNo. If gatePassNo is provided and no match exists, returns 404.",
         tags: ['Grading Gate Pass'],
         summary: 'Get all gate passes for current store',
         querystring: {
@@ -115,7 +115,7 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
             sortOrder: {
               type: 'string',
               enum: ['asc', 'desc'],
-              description: 'Sort by date (default desc)',
+              description: 'Sort by gate pass number (default desc)',
             },
             gatePassNo: {
               type: 'number',
