@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-03-16
+
+### Changed
+
+- **Storage Gate Pass**
+  - Create: request body validated with `createStorageGatePassSchema` before calling the service; OpenAPI body schema added for POST `/` (farmerStorageLinkId, gatePassNo, date, variety, storageCategory, bagSizes, optional manualGatePassNumber, remarks, idempotencyKey).
+  - Update: OpenAPI body and params schemas documented for PUT `/:id`; update schema extended with optional nullable `manualGatePassNumber` (send `null` to clear) and optional `storageCategory`; service uses `$set`/`$unset` so clearing `manualGatePassNumber` is persisted correctly; audit tracks changes to `manualGatePassNumber` and `storageCategory`.
+
+---
+
 ## [1.16.0] - 2026-03-09
 
 ### Added

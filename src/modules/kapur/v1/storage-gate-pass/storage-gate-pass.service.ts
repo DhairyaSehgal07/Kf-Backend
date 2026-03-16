@@ -405,6 +405,13 @@ export async function updateStorageGatePass(
     const { reason, ...updateData } = payload;
     const updateDataForSave = { ...updateData } as Record<string, unknown>;
 
+    // Mongoose Number fields don't accept null; use $unset to clear manualGatePassNumber
+    const unsetFields: Record<string, 1> = {};
+    if (updateDataForSave.manualGatePassNumber === null) {
+      unsetFields.manualGatePassNumber = 1;
+      delete updateDataForSave.manualGatePassNumber;
+    }
+
     const auditEntries: Array<{
       storageGatePassId: Types.ObjectId;
       editedById?: Types.ObjectId;
@@ -418,7 +425,9 @@ export async function updateStorageGatePass(
 
     const fieldsToCheck = [
       'gatePassNo',
+      'manualGatePassNumber',
       'date',
+      'storageCategory',
       'variety',
       'bagSizes',
       'remarks',
@@ -461,11 +470,20 @@ export async function updateStorageGatePass(
       }
     }
 
-    const updated = await StorageGatePass.findByIdAndUpdate(
-      id,
-      updateDataForSave,
-      { new: true, runValidators: true }
-    ).lean();
+    const updateDoc: Record<string, unknown> = Object.keys(updateDataForSave)
+      .length
+      ? { $set: updateDataForSave }
+      : {};
+    if (Object.keys(unsetFields).length) {
+      updateDoc.$unset = unsetFields;
+    }
+    const updatePayload =
+      Object.keys(updateDoc).length > 0 ? updateDoc : updateDataForSave;
+
+    const updated = await StorageGatePass.findByIdAndUpdate(id, updatePayload, {
+      new: true,
+      runValidators: true,
+    }).lean();
 
     if (!updated) {
       throw new NotFoundError(

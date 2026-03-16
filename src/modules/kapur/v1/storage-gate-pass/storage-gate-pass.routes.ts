@@ -27,6 +27,46 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
         description: 'Create a new storage gate pass',
         tags: ['Storage Gate Pass'],
         summary: 'Create storage gate pass',
+        body: {
+          type: 'object',
+          required: [
+            'farmerStorageLinkId',
+            'gatePassNo',
+            'date',
+            'variety',
+            'storageCategory',
+            'bagSizes',
+          ],
+          properties: {
+            farmerStorageLinkId: {
+              type: 'string',
+              description: 'Farmer storage link ID',
+            },
+            gatePassNo: { type: 'number', description: 'Gate pass number' },
+            manualGatePassNumber: {
+              type: 'number',
+              description: 'Optional manual gate pass number',
+            },
+            date: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Gate pass date',
+            },
+            variety: { type: 'string', description: 'Variety' },
+            storageCategory: {
+              type: 'string',
+              description: 'Storage category',
+            },
+            bagSizes: {
+              type: 'array',
+              items: { type: 'object', additionalProperties: true },
+              description: 'Bag sizes',
+            },
+            remarks: { type: 'string', description: 'Remarks' },
+            idempotencyKey: { type: 'string', description: 'Idempotency key' },
+          },
+          additionalProperties: true,
+        },
         response: {
           201: {
             description: 'Storage gate pass created successfully',
@@ -274,15 +314,55 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
     getStorageGatePassesByColdStorageGroupedHandler as never
   );
 
-  // Update storage gate pass
+  // Update storage gate pass (by id)
   fastify.put(
     '/:id',
     {
       schema: {
         ...updateStorageGatePassSchema,
-        description: 'Update a storage gate pass',
+        description:
+          'Update a storage gate pass by ID. Send only fields to update.',
         tags: ['Storage Gate Pass'],
         summary: 'Update storage gate pass',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', description: 'Storage gate pass ID' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            gatePassNo: { type: 'number', description: 'Gate pass number' },
+            manualGatePassNumber: {
+              type: ['number', 'null'],
+              description:
+                'Manual gate pass number (omit to leave unchanged, send null to clear)',
+            },
+            date: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Gate pass date',
+            },
+            storageCategory: {
+              type: 'string',
+              description: 'Storage category',
+            },
+            variety: { type: 'string', description: 'Variety' },
+            bagSizes: {
+              type: 'array',
+              items: { type: 'object', additionalProperties: true },
+              description: 'Bag sizes',
+            },
+            remarks: { type: 'string', description: 'Remarks' },
+            reason: {
+              type: 'string',
+              description: 'Audit reason for the change',
+            },
+          },
+          additionalProperties: true,
+        },
         response: {
           200: {
             description: 'Storage gate pass updated successfully',

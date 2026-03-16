@@ -109,7 +109,20 @@ export const updateStorageGatePassSchema = z.object({
       .positive('Gate pass number must be a positive number')
       .optional(),
 
+    manualGatePassNumber: z.coerce
+      .number()
+      .int('Manual gate pass number must be an integer')
+      .positive('Manual gate pass number must be a positive number')
+      .optional()
+      .nullable(),
+
     date: z.coerce.date().optional(),
+
+    storageCategory: z
+      .string()
+      .trim()
+      .min(1, 'Storage category is required if provided')
+      .optional(),
 
     variety: z
       .string()

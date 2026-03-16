@@ -7,6 +7,7 @@ import {
   getStorageGatePassesByColdStorageGrouped,
 } from './storage-gate-pass.service.js';
 import {
+  createStorageGatePassSchema,
   CreateStorageGatePassBody,
   CreateBulkStorageGatePassBody,
   UpdateStorageGatePassInput,
@@ -40,12 +41,11 @@ export async function createStorageGatePassHandler(
       'Create storage gate pass request'
     );
 
+    const body = createStorageGatePassSchema.shape.body.parse(
+      request.body
+    ) as CreateStorageGatePassBody;
     const storeAdminId = (request as AuthenticatedRequest).user?.id;
-    const result = await createStorageGatePass(
-      request.body,
-      request.log,
-      storeAdminId
-    );
+    const result = await createStorageGatePass(body, request.log, storeAdminId);
 
     return reply.code(201).send({
       status: 'Success',
