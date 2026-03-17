@@ -152,7 +152,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
           properties: {
             limit: {
               type: 'number',
-              description: 'Items per page (default 10, max 100)',
+              description: 'Items per page (default 10, max 5000)',
             },
             page: { type: 'number', description: 'Page number (default 1)' },
             sortOrder: {

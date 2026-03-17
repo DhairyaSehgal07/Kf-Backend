@@ -178,7 +178,7 @@ export const getIncomingGatePassesQuerySchema = z.object({
       .number()
       .int()
       .min(1, 'Limit must be at least 1')
-      .max(100, 'Limit must not exceed 100')
+      .max(5000, 'Limit must not exceed 5000')
       .optional()
       .default(10),
     page: z.coerce

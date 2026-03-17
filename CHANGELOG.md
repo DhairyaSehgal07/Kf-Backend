@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-03-17
+
+### Added
+
+- **Analytics – Storage and grading trend**
+  - New storage analytics routes (module `storage.routes.ts`): GET `/api/v1/analytics/storage-summary` (per-variety summary with initial/current/quantityRemoved and per-size, per bag-type JUTE/LENO breakdown; optional `dateFrom`/`dateTo`), GET `/api/v1/analytics/storage-gate-pass-report` (storage gate pass report with optional `groupByFarmer`, `groupByVariety`, `dateFrom`/`dateTo`), GET `/api/v1/analytics/storage-daily-monthly-trend` (daily and monthly trend by variety, Recharts-ready).
+  - New grading analytics endpoint: GET `/api/v1/analytics/grading-daily-monthly-trend` – daily and monthly trend from grading gate passes grouped by grader; response includes `daily` and `monthly` chartData for Recharts (e.g. LineChart, AreaChart). Optional `dateFrom`/`dateTo`.
+
+### Changed
+
+- **Incoming Gate Pass – List**
+  - GET `/api/v1/incoming-gate-pass` pagination limit increased from max 100 to max 5000 (schema, route description, and service).
+
+---
+
 ## [1.17.0] - 2026-03-16
 
 ### Changed

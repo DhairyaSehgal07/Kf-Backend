@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   getSizeDistributionFromGradingHandler,
   getAreaWiseSizeDistributionFromGradingHandler,
+  getGradingDailyMonthlyTrendHandler,
   getFarmersStockByAreaHandler,
 } from './analytics.controller.js';
 import { authenticate } from '../../../../utils/auth.js';
@@ -232,6 +233,153 @@ export async function gradingAnalyticsRoutes(fastify: FastifyInstance) {
       },
     },
     getAreaWiseSizeDistributionFromGradingHandler as never
+  );
+
+  // Daily & monthly trend (grading gate pass) – Recharts-ready for LineChart/AreaChart
+  fastify.get(
+    '/grading-daily-monthly-trend',
+    {
+      preHandler: [authenticate],
+      schema: {
+        description:
+          'Daily and monthly trend (bags graded per day and per month) from grading gate passes, grouped by grader. Returns both daily and monthly chartData for Recharts (e.g. LineChart, AreaChart), each series keyed by grader.',
+        tags: ['Analytics', 'Grading'],
+        summary: 'Daily & monthly trend chart data (grading, by grader)',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              description: 'Start date (inclusive), YYYY-MM-DD',
+            },
+            dateTo: {
+              type: 'string',
+              description: 'End date (inclusive), YYYY-MM-DD',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Daily and monthly trend grouped by grader, with chartData for Recharts (each item: grader + dataPoints)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  daily: {
+                    type: 'object',
+                    properties: {
+                      chartData: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            grader: {
+                              type: 'string',
+                              description: 'Grader name (or Unspecified)',
+                            },
+                            dataPoints: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  date: {
+                                    type: 'string',
+                                    description: 'Date YYYY-MM-DD (x-axis)',
+                                  },
+                                  bags: {
+                                    type: 'number',
+                                    description: 'Total bags graded that day',
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  monthly: {
+                    type: 'object',
+                    properties: {
+                      chartData: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            grader: {
+                              type: 'string',
+                              description: 'Grader name (or Unspecified)',
+                            },
+                            dataPoints: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  month: {
+                                    type: 'string',
+                                    description: 'Month YYYY-MM',
+                                  },
+                                  monthLabel: {
+                                    type: 'string',
+                                    description: 'Display label e.g. Jan 2024',
+                                  },
+                                  bags: {
+                                    type: 'number',
+                                    description: 'Total bags graded that month',
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error (e.g. invalid date)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getGradingDailyMonthlyTrendHandler as never
   );
 
   // Farmers and stock matching area, size and variety (for current cold storage)

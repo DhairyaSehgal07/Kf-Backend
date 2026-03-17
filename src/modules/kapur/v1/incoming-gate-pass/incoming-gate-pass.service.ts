@@ -475,7 +475,7 @@ export async function getIncomingGatePassesByColdStorage(
       );
     }
 
-    const limit = Math.min(Math.max(options.limit ?? 10, 1), 100);
+    const limit = Math.min(Math.max(options.limit ?? 10, 1), 5000);
     const page = Math.max(options.page ?? 1, 1);
     const sortOrder = options.sortOrder ?? 'desc';
     const sortDir = sortOrder === 'desc' ? -1 : 1;

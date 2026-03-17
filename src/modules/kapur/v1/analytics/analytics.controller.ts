@@ -7,6 +7,10 @@ import {
   getSizeDistributionFromGrading,
   getAreaWiseSizeDistributionFromGrading,
   getFarmersStockByArea,
+  getGradingDailyMonthlyTrend,
+  getStorageSummary,
+  getStorageGatePassReport,
+  getStorageDailyMonthlyTrend,
 } from './analytics.service.js';
 import { AuthenticatedRequest } from '../../../../utils/auth.js';
 import {
@@ -344,6 +348,64 @@ export async function getAreaWiseSizeDistributionFromGradingHandler(
   }
 }
 
+/**
+ * Handler for GET /analytics/grading-daily-monthly-trend – daily and monthly trend chart data from grading gate passes, grouped by grader
+ */
+export async function getGradingDailyMonthlyTrendHandler(
+  request: FastifyRequest<{ Querystring: GradingAnalyticsQuerystring }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user?.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? (req.user.coldStorageId as { _id: string })._id
+        : (req.user?.coldStorageId as string | undefined);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo } = request.query;
+    const data = await getGradingDailyMonthlyTrend(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getGradingDailyMonthlyTrendHandler'
+    );
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
 export interface FarmersStockByAreaQuerystring {
   area: string;
 }
@@ -383,6 +445,197 @@ export async function getFarmersStockByAreaHandler(
     request.log.error(
       { error, query: request.query },
       'Error in getFarmersStockByAreaHandler'
+    );
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
+/* =======================
+   STORAGE ANALYTICS HANDLERS
+======================= */
+
+export interface StorageAnalyticsQuerystring {
+  dateFrom?: string;
+  dateTo?: string;
+  variety?: string;
+  groupByFarmer?: boolean;
+  groupByVariety?: boolean;
+}
+
+/**
+ * Handler for GET /analytics/storage-summary – per-variety storage summary with size and bag-type breakdown
+ */
+export async function getStorageSummaryHandler(
+  request: FastifyRequest<{
+    Querystring: Pick<StorageAnalyticsQuerystring, 'dateFrom' | 'dateTo'>;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user?.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? (req.user.coldStorageId as { _id: string })._id
+        : (req.user?.coldStorageId as string | undefined);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo } = request.query;
+    const data = await getStorageSummary(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageSummaryHandler'
+    );
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Handler for GET /analytics/storage-gate-pass-report – storage gate passes, optionally grouped by farmer/variety
+ */
+export async function getStorageGatePassReportHandler(
+  request: FastifyRequest<{ Querystring: StorageAnalyticsQuerystring }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user?.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? (req.user.coldStorageId as { _id: string })._id
+        : (req.user?.coldStorageId as string | undefined);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo, variety, groupByFarmer, groupByVariety } =
+      request.query;
+    const data = await getStorageGatePassReport(
+      coldStorageId,
+      { dateFrom, dateTo, variety, groupByFarmer, groupByVariety },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageGatePassReportHandler'
+    );
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Handler for GET /analytics/storage-daily-monthly-trend – daily/monthly trend (storage) by variety
+ */
+export async function getStorageDailyMonthlyTrendHandler(
+  request: FastifyRequest<{
+    Querystring: Pick<StorageAnalyticsQuerystring, 'dateFrom' | 'dateTo'>;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user?.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? (req.user.coldStorageId as { _id: string })._id
+        : (req.user?.coldStorageId as string | undefined);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo } = request.query;
+    const data = await getStorageDailyMonthlyTrend(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageDailyMonthlyTrendHandler'
     );
     if (error instanceof UnauthorizedError) {
       return reply.code(error.statusCode).send({

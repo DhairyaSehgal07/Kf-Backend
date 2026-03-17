@@ -712,6 +712,193 @@ export async function getSizeDistributionFromGrading(
   return { chartData };
 }
 
+export interface GradingDailyMonthlyTrendResult {
+  daily: {
+    chartData: Array<{
+      grader: string;
+      dataPoints: Array<{ date: string; bags: number }>;
+    }>;
+  };
+  monthly: {
+    chartData: Array<{
+      grader: string;
+      dataPoints: Array<{
+        month: string;
+        monthLabel: string;
+        bags: number;
+      }>;
+    }>;
+  };
+}
+
+/**
+ * Daily and monthly trend (bags graded per day and per month) from grading gate passes, grouped by grader (createdBy → StoreAdmin name).
+ * Returns both daily and monthly chartData for Recharts (e.g. LineChart, AreaChart), each series keyed by grader.
+ */
+export async function getGradingDailyMonthlyTrend(
+  coldStorageId: string,
+  filters: GradingDateFilters,
+  logger?: FastifyBaseLogger
+): Promise<GradingDailyMonthlyTrendResult> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+  const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: coldStorageObjectId,
+  })
+    .distinct('_id')
+    .lean();
+
+  if (farmerStorageLinkIds.length === 0) {
+    return {
+      daily: { chartData: [] },
+      monthly: { chartData: [] },
+    };
+  }
+
+  const match: Record<string, unknown> = {
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+  };
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+
+  const dailyRaw = await GradingGatePass.aggregate<{
+    grader: string;
+    dataPoints: Array<{ date: string; bags: number }>;
+  }>([
+    { $match: match },
+    { $unwind: '$orderDetails' },
+    {
+      $group: {
+        _id: {
+          dateStr: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+          createdBy: { $ifNull: ['$createdBy', null] },
+        },
+        bags: { $sum: '$orderDetails.initialQuantity' },
+      },
+    },
+    {
+      $lookup: {
+        from: 'storeadmins',
+        localField: '_id.createdBy',
+        foreignField: '_id',
+        as: 'adminDoc',
+      },
+    },
+    {
+      $project: {
+        grader: {
+          $ifNull: [{ $arrayElemAt: ['$adminDoc.name', 0] }, 'Unspecified'],
+        },
+        date: '$_id.dateStr',
+        bags: 1,
+        _id: 0,
+      },
+    },
+    { $sort: { grader: 1, date: 1 } },
+    {
+      $group: {
+        _id: '$grader',
+        dataPoints: { $push: { date: '$date', bags: '$bags' } },
+      },
+    },
+    { $project: { grader: '$_id', dataPoints: 1, _id: 0 } },
+  ]);
+
+  const monthlyRaw = await GradingGatePass.aggregate<{
+    grader: string;
+    dataPoints: Array<{ month: string; bags: number }>;
+  }>([
+    { $match: match },
+    { $unwind: '$orderDetails' },
+    {
+      $group: {
+        _id: {
+          monthStr: { $dateToString: { format: '%Y-%m', date: '$date' } },
+          createdBy: { $ifNull: ['$createdBy', null] },
+        },
+        bags: { $sum: '$orderDetails.initialQuantity' },
+      },
+    },
+    {
+      $lookup: {
+        from: 'storeadmins',
+        localField: '_id.createdBy',
+        foreignField: '_id',
+        as: 'adminDoc',
+      },
+    },
+    {
+      $project: {
+        grader: {
+          $ifNull: [{ $arrayElemAt: ['$adminDoc.name', 0] }, 'Unspecified'],
+        },
+        month: '$_id.monthStr',
+        bags: 1,
+        _id: 0,
+      },
+    },
+    { $sort: { grader: 1, month: 1 } },
+    {
+      $group: {
+        _id: '$grader',
+        dataPoints: { $push: { month: '$month', bags: '$bags' } },
+      },
+    },
+    { $project: { grader: '$_id', dataPoints: 1, _id: 0 } },
+  ]);
+
+  const daily = {
+    chartData: dailyRaw,
+  };
+  const monthly = {
+    chartData: monthlyRaw.map((r) => ({
+      grader: r.grader,
+      dataPoints: r.dataPoints.map((p) => ({
+        month: p.month,
+        monthLabel: formatMonthLabel(p.month),
+        bags: p.bags,
+      })),
+    })),
+  };
+
+  logger?.info(
+    {
+      coldStorageId,
+      dailySeries: daily.chartData.length,
+      monthlySeries: monthly.chartData.length,
+    },
+    'Grading daily/monthly trend computed'
+  );
+  return { daily, monthly };
+}
+
 export interface AreaWiseSizeDistributionFromGradingResult {
   chartData: Array<{
     variety: string;
@@ -983,4 +1170,562 @@ export async function getFarmersStockByArea(
     'Farmers stock by area computed'
   );
   return { farmers };
+}
+
+/* =======================
+   STORAGE ANALYTICS (summary, gate pass report, daily/monthly trend)
+======================= */
+
+export interface StorageSummaryDateFilters {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface StorageSummarySizeRow {
+  size: string;
+  initialQuantity: number;
+  currentQuantity: number;
+  quantityRemoved: number;
+  byBagType: Array<{
+    bagType: string;
+    initialQuantity: number;
+    currentQuantity: number;
+    quantityRemoved: number;
+  }>;
+}
+
+export interface StorageSummaryVarietyRow {
+  variety: string;
+  initialQuantity: number;
+  currentQuantity: number;
+  quantityRemoved: number;
+  sizes: StorageSummarySizeRow[];
+}
+
+/**
+ * Per-variety storage summary with per-size and per bag-type (JUTE/LENO) breakdown.
+ * Optional dateFrom/dateTo filter by gate pass date.
+ */
+export async function getStorageSummary(
+  coldStorageId: string,
+  filters: StorageSummaryDateFilters,
+  logger?: FastifyBaseLogger
+): Promise<StorageSummaryVarietyRow[]> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+  const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: coldStorageObjectId,
+  })
+    .distinct('_id')
+    .lean();
+
+  if (farmerStorageLinkIds.length === 0) {
+    return [];
+  }
+
+  const match: Record<string, unknown> = {
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+  };
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+
+  const docs = await StorageGatePass.find(match)
+    .select('variety bagSizes')
+    .lean();
+
+  const byVariety = new Map<
+    string,
+    Map<string, Map<string, { initial: number; current: number }>>
+  >();
+
+  for (const doc of docs) {
+    const variety = doc.variety?.trim() || 'Unspecified';
+    for (const bs of doc.bagSizes ?? []) {
+      const size = bs.size?.trim() || '';
+      const bagType = bs.bagType ?? 'JUTE';
+      const initial = Number(bs.initialQuantity) || 0;
+      const current = Number(bs.currentQuantity) || 0;
+
+      let varietyMap = byVariety.get(variety);
+      if (!varietyMap) {
+        varietyMap = new Map();
+        byVariety.set(variety, varietyMap);
+      }
+      let sizeMap = varietyMap.get(size);
+      if (!sizeMap) {
+        sizeMap = new Map();
+        varietyMap.set(size, sizeMap);
+      }
+      let bag = sizeMap.get(bagType);
+      if (!bag) {
+        bag = { initial: 0, current: 0 };
+        sizeMap.set(bagType, bag);
+      }
+      bag.initial += initial;
+      bag.current += current;
+    }
+  }
+
+  const result: StorageSummaryVarietyRow[] = [];
+  for (const [variety, sizeMap] of byVariety) {
+    let varietyInitial = 0;
+    let varietyCurrent = 0;
+    const sizes: StorageSummarySizeRow[] = [];
+    for (const [size, bagTypeMap] of sizeMap) {
+      const byBagType: StorageSummarySizeRow['byBagType'] = [];
+      let sizeInitial = 0;
+      let sizeCurrent = 0;
+      for (const [bagType, { initial, current }] of bagTypeMap) {
+        const removed = initial - current;
+        byBagType.push({
+          bagType,
+          initialQuantity: initial,
+          currentQuantity: current,
+          quantityRemoved: removed,
+        });
+        sizeInitial += initial;
+        sizeCurrent += current;
+      }
+      sizes.push({
+        size,
+        initialQuantity: sizeInitial,
+        currentQuantity: sizeCurrent,
+        quantityRemoved: sizeInitial - sizeCurrent,
+        byBagType,
+      });
+      varietyInitial += sizeInitial;
+      varietyCurrent += sizeCurrent;
+    }
+    result.push({
+      variety,
+      initialQuantity: varietyInitial,
+      currentQuantity: varietyCurrent,
+      quantityRemoved: varietyInitial - varietyCurrent,
+      sizes,
+    });
+  }
+  result.sort((a, b) => a.variety.localeCompare(b.variety));
+
+  logger?.info(
+    { coldStorageId, varietyCount: result.length },
+    'Storage summary computed'
+  );
+  return result;
+}
+
+export interface StorageGatePassReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  variety?: string;
+  groupByFarmer?: boolean;
+  groupByVariety?: boolean;
+}
+
+export type StorageGatePassReportData =
+  | Array<Record<string, unknown>>
+  | Array<{ farmer: Record<string, unknown>; gatePasses: unknown[] }>
+  | Array<{
+      variety: string;
+      farmers: Array<{
+        farmer: Record<string, unknown>;
+        gatePasses: unknown[];
+      }>;
+    }>;
+
+/**
+ * Storage gate pass report: list of gate passes or grouped by farmer/variety.
+ */
+export async function getStorageGatePassReport(
+  coldStorageId: string,
+  filters: StorageGatePassReportFilters,
+  logger?: FastifyBaseLogger
+): Promise<StorageGatePassReportData> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+  const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: coldStorageObjectId,
+  })
+    .distinct('_id')
+    .lean();
+
+  if (farmerStorageLinkIds.length === 0) {
+    return [];
+  }
+
+  const match: Record<string, unknown> = {
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+  };
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+  if (filters.variety != null && filters.variety.trim() !== '') {
+    match.variety = filters.variety.trim();
+  }
+
+  const passes = await StorageGatePass.find(match)
+    .populate({
+      path: 'farmerStorageLinkId',
+      select: 'accountNumber farmerId',
+      populate: [{ path: 'farmerId', select: 'name mobileNumber address' }],
+    })
+    .sort({ date: -1, gatePassNo: -1 })
+    .lean();
+
+  const serializePass = (
+    p: (typeof passes)[number]
+  ): Record<string, unknown> => {
+    const link = p.farmerStorageLinkId as unknown as {
+      _id: mongoose.Types.ObjectId;
+      accountNumber?: number;
+      farmerId?: {
+        _id: mongoose.Types.ObjectId;
+        name?: string;
+        mobileNumber?: string;
+        address?: string;
+      };
+    } | null;
+    return {
+      _id: (p as { _id: mongoose.Types.ObjectId })._id?.toString(),
+      gatePassNo: p.gatePassNo,
+      manualGatePassNumber: p.manualGatePassNumber,
+      date: p.date,
+      variety: p.variety,
+      storageCategory: p.storageCategory,
+      bagSizes: p.bagSizes,
+      remarks: p.remarks,
+      farmer: link?.farmerId
+        ? {
+            id: link.farmerId._id?.toString(),
+            name: link.farmerId.name,
+            mobileNumber: link.farmerId.mobileNumber,
+            address: link.farmerId.address,
+          }
+        : undefined,
+      accountNumber: link?.accountNumber,
+    };
+  };
+
+  const groupByFarmer = Boolean(filters.groupByFarmer);
+  const groupByVariety = Boolean(filters.groupByVariety);
+
+  if (!groupByFarmer && !groupByVariety) {
+    return passes.map(serializePass) as StorageGatePassReportData;
+  }
+
+  if (groupByVariety && groupByFarmer) {
+    const byVariety = new Map<
+      string,
+      Map<string, { farmer: Record<string, unknown>; gatePasses: unknown[] }>
+    >();
+    for (const p of passes) {
+      const variety = (p.variety?.trim() || 'Unspecified') as string;
+      const link = p.farmerStorageLinkId as unknown as {
+        farmerId?: {
+          _id: mongoose.Types.ObjectId;
+          name?: string;
+          mobileNumber?: string;
+          address?: string;
+        };
+      } | null;
+      const farmerKey = link?.farmerId?._id?.toString() ?? 'unknown';
+      const farmerLabel = link?.farmerId
+        ? {
+            id: farmerKey,
+            name: link.farmerId.name,
+            mobileNumber: link.farmerId.mobileNumber,
+            address: link.farmerId.address,
+          }
+        : { id: farmerKey, name: '', mobileNumber: '', address: '' };
+
+      let farmerMap = byVariety.get(variety);
+      if (!farmerMap) {
+        farmerMap = new Map();
+        byVariety.set(variety, farmerMap);
+      }
+      let entry = farmerMap.get(farmerKey);
+      if (!entry) {
+        entry = { farmer: farmerLabel, gatePasses: [] };
+        farmerMap.set(farmerKey, entry);
+      }
+      entry.gatePasses.push(serializePass(p));
+    }
+    const result: Array<{
+      variety: string;
+      farmers: Array<{
+        farmer: Record<string, unknown>;
+        gatePasses: unknown[];
+      }>;
+    }> = [];
+    for (const [variety, farmerMap] of byVariety) {
+      result.push({
+        variety,
+        farmers: Array.from(farmerMap.values()),
+      });
+    }
+    result.sort((a, b) => a.variety.localeCompare(b.variety));
+    logger?.info(
+      { coldStorageId, varietyCount: result.length },
+      'Storage gate pass report computed (grouped by variety + farmer)'
+    );
+    return result;
+  }
+
+  if (groupByFarmer) {
+    const byFarmer = new Map<
+      string,
+      { farmer: Record<string, unknown>; gatePasses: unknown[] }
+    >();
+    for (const p of passes) {
+      const link = p.farmerStorageLinkId as unknown as {
+        farmerId?: {
+          _id: mongoose.Types.ObjectId;
+          name?: string;
+          mobileNumber?: string;
+          address?: string;
+        };
+      } | null;
+      const farmerKey = link?.farmerId?._id?.toString() ?? 'unknown';
+      const farmerLabel = link?.farmerId
+        ? {
+            id: farmerKey,
+            name: link.farmerId.name,
+            mobileNumber: link.farmerId.mobileNumber,
+            address: link.farmerId.address,
+          }
+        : { id: farmerKey, name: '', mobileNumber: '', address: '' };
+      if (!byFarmer.has(farmerKey)) {
+        byFarmer.set(farmerKey, { farmer: farmerLabel, gatePasses: [] });
+      }
+      byFarmer.get(farmerKey)!.gatePasses.push(serializePass(p));
+    }
+    const result = Array.from(byFarmer.values());
+    logger?.info(
+      { coldStorageId, farmerCount: result.length },
+      'Storage gate pass report computed (grouped by farmer)'
+    );
+    return result;
+  }
+
+  if (groupByVariety) {
+    const byVariety = new Map<string, unknown[]>();
+    for (const p of passes) {
+      const variety = (p.variety?.trim() || 'Unspecified') as string;
+      if (!byVariety.has(variety)) {
+        byVariety.set(variety, []);
+      }
+      byVariety.get(variety)!.push(serializePass(p));
+    }
+    const result = Array.from(byVariety.entries()).map(
+      ([variety, gatePasses]) => ({
+        variety,
+        gatePasses,
+      })
+    );
+    result.sort((a, b) => a.variety.localeCompare(b.variety));
+    logger?.info(
+      { coldStorageId, varietyCount: result.length },
+      'Storage gate pass report computed (grouped by variety)'
+    );
+    return result;
+  }
+
+  return passes.map(serializePass) as StorageGatePassReportData;
+}
+
+export interface StorageDailyMonthlyTrendFilters {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface StorageDailyMonthlyTrendResult {
+  daily: {
+    chartData: Array<{
+      variety: string;
+      dataPoints: Array<{ date: string; bags: number }>;
+    }>;
+  };
+  monthly: {
+    chartData: Array<{
+      variety: string;
+      dataPoints: Array<{ month: string; monthLabel: string; bags: number }>;
+    }>;
+  };
+}
+
+/**
+ * Daily and monthly trend (bags stored) from storage gate passes, grouped by variety.
+ * Uses initialQuantity only. Recharts-ready (LineChart/AreaChart).
+ */
+export async function getStorageDailyMonthlyTrend(
+  coldStorageId: string,
+  filters: StorageDailyMonthlyTrendFilters,
+  logger?: FastifyBaseLogger
+): Promise<StorageDailyMonthlyTrendResult> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+  const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: coldStorageObjectId,
+  })
+    .distinct('_id')
+    .lean();
+
+  if (farmerStorageLinkIds.length === 0) {
+    return {
+      daily: { chartData: [] },
+      monthly: { chartData: [] },
+    };
+  }
+
+  const match: Record<string, unknown> = {
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+  };
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+
+  const docs = await StorageGatePass.find(match)
+    .select('date variety bagSizes')
+    .lean();
+
+  type VarietyPoints = Map<string, Map<string, number>>;
+  const dailyByVariety: VarietyPoints = new Map();
+  const monthlyByVariety: VarietyPoints = new Map();
+
+  for (const doc of docs) {
+    const variety = doc.variety?.trim() || 'Unspecified';
+    const totalBags = (doc.bagSizes ?? []).reduce(
+      (sum, bs) => sum + (Number(bs.initialQuantity) || 0),
+      0
+    );
+    if (totalBags <= 0) continue;
+
+    const d = doc.date instanceof Date ? doc.date : new Date(doc.date);
+    const dateStr = d.toISOString().slice(0, 10);
+    const monthStr = dateStr.slice(0, 7);
+
+    if (!dailyByVariety.has(variety)) {
+      dailyByVariety.set(variety, new Map());
+    }
+    const dailyMap = dailyByVariety.get(variety)!;
+    dailyMap.set(dateStr, (dailyMap.get(dateStr) ?? 0) + totalBags);
+
+    if (!monthlyByVariety.has(variety)) {
+      monthlyByVariety.set(variety, new Map());
+    }
+    const monthlyMap = monthlyByVariety.get(variety)!;
+    monthlyMap.set(monthStr, (monthlyMap.get(monthStr) ?? 0) + totalBags);
+  }
+
+  const dailyChartData = Array.from(dailyByVariety.entries()).map(
+    ([variety, dateMap]) => ({
+      variety,
+      dataPoints: Array.from(dateMap.entries())
+        .map(([date, bags]) => ({ date, bags }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    })
+  );
+  const monthlyChartData = Array.from(monthlyByVariety.entries()).map(
+    ([variety, monthMap]) => ({
+      variety,
+      dataPoints: Array.from(monthMap.entries())
+        .map(([month, bags]) => ({
+          month,
+          monthLabel: formatMonthLabel(month),
+          bags,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month)),
+    })
+  );
+
+  logger?.info(
+    {
+      coldStorageId,
+      dailySeries: dailyChartData.length,
+      monthlySeries: monthlyChartData.length,
+    },
+    'Storage daily/monthly trend computed'
+  );
+  return {
+    daily: { chartData: dailyChartData },
+    monthly: { chartData: monthlyChartData },
+  };
 }

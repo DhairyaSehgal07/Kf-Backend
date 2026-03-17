@@ -5,6 +5,7 @@ import {
 } from './analytics.controller.js';
 import { incomingAnalyticsRoutes } from './incoming.routes.js';
 import { gradingAnalyticsRoutes } from './grading.routes.js';
+import { storageAnalyticsRoutes } from './storage.routes.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 /**
@@ -118,4 +119,7 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
 
   // Grading analytics (size distribution, area-wise, farmers-stock-by-filters) at /api/v1/analytics/...
   await fastify.register(gradingAnalyticsRoutes);
+
+  // Storage analytics (storage-summary, storage-gate-pass-report, storage-daily-monthly-trend) at /api/v1/analytics/...
+  await fastify.register(storageAnalyticsRoutes);
 }
