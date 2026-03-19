@@ -522,6 +522,155 @@ export interface StorageGatePassDateFilters {
   variety?: string; // Filter by variety (exact match after trim)
 }
 
+export interface GetPaginatedStorageGatePassesByColdStorageOptions extends StorageGatePassDateFilters {
+  limit?: number;
+  page?: number;
+  sortOrder?: 'asc' | 'desc';
+  /** When set, returns the single matching storage gate pass or throws NotFoundError */
+  gatePassNo?: number;
+}
+
+export interface StorageGatePassesPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/**
+ * Retrieves storage gate passes for a cold storage with pagination.
+ * When gatePassNo is provided, returns the single matching gate pass or throws NotFoundError.
+ */
+export async function getPaginatedStorageGatePassesByColdStorage(
+  coldStorageId: string,
+  options: GetPaginatedStorageGatePassesByColdStorageOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{
+  storageGatePasses: Array<Record<string, unknown>>;
+  pagination: StorageGatePassesPagination;
+}> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const limit = Math.min(Math.max(options.limit ?? 10, 1), 5000);
+    const page = Math.max(options.page ?? 1, 1);
+    const sortOrder = options.sortOrder ?? 'desc';
+    const sortDir = sortOrder === 'desc' ? -1 : 1;
+    const gatePassNo = options.gatePassNo;
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const match: Record<string, unknown> = {
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    };
+
+    if (gatePassNo != null) {
+      match.gatePassNo = gatePassNo;
+    }
+
+    if (options.dateFrom) {
+      const start = new Date(options.dateFrom);
+      if (Number.isNaN(start.getTime())) {
+        throw new ValidationError(
+          'Invalid dateFrom format; use YYYY-MM-DD',
+          'INVALID_DATE_FROM'
+        );
+      }
+      start.setUTCHours(0, 0, 0, 0);
+      match.date = (match.date as Record<string, unknown>) ?? {};
+      (match.date as Record<string, unknown>).$gte = start;
+    }
+
+    if (options.dateTo) {
+      const end = new Date(options.dateTo);
+      if (Number.isNaN(end.getTime())) {
+        throw new ValidationError(
+          'Invalid dateTo format; use YYYY-MM-DD',
+          'INVALID_DATE_TO'
+        );
+      }
+      end.setUTCHours(23, 59, 59, 999);
+      match.date = (match.date as Record<string, unknown>) ?? {};
+      (match.date as Record<string, unknown>).$lte = end;
+    }
+
+    if (options.variety != null && options.variety.trim() !== '') {
+      match.variety = options.variety.trim();
+    }
+
+    const [total, storageGatePasses] = await Promise.all([
+      StorageGatePass.countDocuments(match),
+      StorageGatePass.find(match)
+        .populate({
+          path: 'farmerStorageLinkId',
+          select: 'accountNumber farmerId linkedById',
+          populate: [
+            { path: 'farmerId', select: 'name mobileNumber address' },
+            { path: 'linkedById', select: 'name' },
+          ],
+        })
+        .populate({ path: 'createdBy', select: 'name' })
+        .sort({ gatePassNo: sortDir, date: sortDir })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    if (gatePassNo != null && total === 0) {
+      throw new NotFoundError(
+        `Storage gate pass with gate pass number ${gatePassNo} not found`,
+        'STORAGE_GATE_PASS_NOT_FOUND'
+      );
+    }
+
+    const totalPages = Math.ceil(total / limit);
+
+    logger?.info(
+      {
+        coldStorageId,
+        count: storageGatePasses.length,
+        total,
+        page,
+        limit,
+        ...(gatePassNo != null && { gatePassNo }),
+      },
+      'Retrieved paginated storage gate passes by cold storage'
+    );
+
+    return {
+      storageGatePasses: storageGatePasses as Array<Record<string, unknown>>,
+      pagination: { page, limit, total, totalPages },
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving paginated storage gate passes by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate passes',
+      500,
+      'GET_STORAGE_GATE_PASSES_ERROR'
+    );
+  }
+}
+
 /**
  * Retrieves all storage gate passes for a cold storage (via farmer storage links for that cold storage).
  * @param coldStorageId - Cold storage ID

@@ -198,26 +198,74 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
     createStorageGatePassBulkHandler as never
   );
 
-  // Get all storage gate passes for authenticated user's cold storage
+  // Get storage gate passes for authenticated user's cold storage (pagination + search)
   fastify.get(
     '/',
     {
       schema: {
         description:
-          "Get all storage gate passes for the authenticated store admin's cold storage",
+          "Get storage gate passes for the authenticated store admin's cold storage. Supports pagination (limit, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo, and optional filters dateFrom/dateTo (inclusive) and variety. If gatePassNo is provided and no match exists, returns 404.",
         tags: ['Storage Gate Pass'],
-        summary: 'Get storage gate passes for my cold storage',
+        summary: 'Get all storage gate passes for current cold storage',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 10, max 5000)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+            sortOrder: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort by gate pass number (default desc)',
+            },
+            gatePassNo: {
+              type: 'number',
+              description:
+                'Search by gate pass number. Returns the single matching storage gate pass or 404 if not found.',
+            },
+            dateFrom: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range start (inclusive). ISO date string, e.g. 2026-03-01.',
+            },
+            dateTo: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
+            },
+            variety: {
+              type: 'string',
+              description: 'Filter by variety (exact match after trim)',
+            },
+          },
+        },
         response: {
           200: {
-            description: 'List of storage gate passes',
+            description:
+              'Paginated list of storage gate passes (or single match when gatePassNo is provided)',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: true,
+                type: 'object',
+                properties: {
+                  storageGatePasses: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
+                    },
+                  },
                 },
               },
             },
@@ -231,6 +279,24 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
                 type: 'object',
                 properties: {
                   code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Storage gate pass not found (when gatePassNo is provided and no match exists)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: {
+                    type: 'string',
+                    example: 'STORAGE_GATE_PASS_NOT_FOUND',
+                  },
                   message: { type: 'string' },
                 },
               },

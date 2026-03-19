@@ -3,7 +3,7 @@ import {
   createStorageGatePass,
   createStorageGatePassBulk,
   updateStorageGatePass,
-  getStorageGatePassesByColdStorage,
+  getPaginatedStorageGatePassesByColdStorage,
   getStorageGatePassesByColdStorageGrouped,
 } from './storage-gate-pass.service.js';
 import {
@@ -200,7 +200,17 @@ export async function createStorageGatePassBulkHandler(
  * Handler for retrieving storage gate passes for the authenticated user's cold storage
  */
 export async function getStorageGatePassesByColdStorageHandler(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      limit?: number;
+      page?: number;
+      sortOrder?: 'asc' | 'desc';
+      gatePassNo?: number;
+      dateFrom?: string;
+      dateTo?: string;
+      variety?: string;
+    };
+  }>,
   reply: FastifyReply
 ) {
   try {
@@ -220,14 +230,27 @@ export async function getStorageGatePassesByColdStorageHandler(
       );
     }
 
-    const storageGatePasses = await getStorageGatePassesByColdStorage(
+    const query = request.query;
+    const limit = query.limit ?? 10;
+    const page = query.page ?? 1;
+    const sortOrder = query.sortOrder ?? 'desc';
+    const gatePassNo = query.gatePassNo;
+    const dateFrom = query.dateFrom;
+    const dateTo = query.dateTo;
+    const variety = query.variety;
+
+    const result = await getPaginatedStorageGatePassesByColdStorage(
       coldStorageId,
+      { limit, page, sortOrder, gatePassNo, dateFrom, dateTo, variety },
       request.log
     );
 
     return reply.send({
       success: true,
-      data: storageGatePasses,
+      data: {
+        storageGatePasses: result.storageGatePasses,
+        pagination: result.pagination,
+      },
     });
   } catch (error) {
     request.log.error(
@@ -236,6 +259,16 @@ export async function getStorageGatePassesByColdStorageHandler(
     );
 
     if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof NotFoundError) {
       return reply.code(error.statusCode).send({
         success: false,
         error: {
