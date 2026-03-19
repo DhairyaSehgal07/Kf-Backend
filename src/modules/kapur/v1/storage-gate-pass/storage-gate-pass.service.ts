@@ -650,7 +650,11 @@ export async function getPaginatedStorageGatePassesByColdStorage(
     );
 
     return {
-      storageGatePasses: storageGatePasses as Array<Record<string, unknown>>,
+      // `.lean()` returns plain objects, but Mongoose's generics don't always align with our DTO typing.
+      // Cast via `unknown` to satisfy TS2352 while preserving the runtime shape.
+      storageGatePasses: storageGatePasses as unknown as Array<
+        Record<string, unknown>
+      >,
       pagination: { page, limit, total, totalPages },
     };
   } catch (error) {
