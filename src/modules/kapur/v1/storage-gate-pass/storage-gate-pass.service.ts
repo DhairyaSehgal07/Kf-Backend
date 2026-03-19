@@ -837,3 +837,82 @@ export async function getStorageGatePassesByColdStorageGrouped(
 
   return groups;
 }
+
+/**
+ * Retrieves all storage gate passes for a given farmer-storage-link (no pagination).
+ * Validates that the farmer storage link belongs to the given cold storage.
+ */
+export async function getStorageGatePassesByFarmerStorageLink(
+  farmerStorageLinkId: string,
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
+      throw new ValidationError(
+        'Invalid farmer storage link ID format',
+        'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const link = await FarmerStorageLink.findOne({
+      _id: new mongoose.Types.ObjectId(farmerStorageLinkId),
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+    }).lean();
+
+    if (!link) {
+      logger?.warn(
+        { farmerStorageLinkId, coldStorageId },
+        'Farmer storage link not found or does not belong to cold storage'
+      );
+      throw new NotFoundError(
+        'Farmer storage link not found or access denied',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    const storageGatePasses = await StorageGatePass.find({
+      farmerStorageLinkId: new mongoose.Types.ObjectId(farmerStorageLinkId),
+    })
+      .populate({
+        path: 'farmerStorageLinkId',
+        select: 'accountNumber farmerId linkedById',
+        populate: [
+          { path: 'farmerId', select: 'name mobileNumber address' },
+          { path: 'linkedById', select: 'name' },
+        ],
+      })
+      .populate({ path: 'createdBy', select: 'name' })
+      .sort({ gatePassNo: -1, date: -1 })
+      .lean();
+
+    logger?.info(
+      { farmerStorageLinkId, count: storageGatePasses.length },
+      'Retrieved storage gate passes by farmer storage link'
+    );
+
+    return storageGatePasses;
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, farmerStorageLinkId },
+      'Error retrieving storage gate passes by farmer storage link'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate passes by farmer storage link',
+      500,
+      'GET_STORAGE_GATE_PASSES_BY_FARMER_STORAGE_LINK_ERROR'
+    );
+  }
+}
