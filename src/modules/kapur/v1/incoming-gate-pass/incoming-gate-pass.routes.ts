@@ -14,6 +14,111 @@ import { authenticate } from '../../../../utils/auth.js';
 
 const categoryEnumValues = Object.values(IncomingGatePassCategory);
 
+/** Shared options for PUT/PATCH update (same handler and validation). */
+const incomingGatePassUpdateRouteOptions = {
+  schema: {
+    ...updateIncomingGatePassSchema,
+    description: 'Update an incoming gate pass',
+    tags: ['Incoming Gate Pass'],
+    summary: 'Update incoming gate pass',
+    body: {
+      type: 'object',
+      properties: {
+        farmerStorageLinkId: { type: 'string' },
+        gatePassNo: { type: 'number' },
+        date: { type: 'string', format: 'date-time' },
+        variety: { type: 'string' },
+        category: {
+          type: 'string',
+          enum: categoryEnumValues,
+          description: 'Category of the gate pass',
+        },
+        truckNumber: { type: 'string' },
+        bagsReceived: { type: 'number' },
+        weightSlip: {
+          type: 'object',
+          properties: {
+            slipNumber: { type: 'string' },
+            grossWeightKg: { type: 'number' },
+            tareWeightKg: { type: 'number' },
+          },
+        },
+        status: {
+          type: 'string',
+          enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
+        },
+        gradingSummary: {
+          type: 'object',
+          properties: { totalGradedBags: { type: 'number' } },
+        },
+        stage: { type: 'string' },
+        remarks: { type: 'string' },
+        reason: { type: 'string' },
+      },
+    },
+    response: {
+      200: {
+        description: 'Incoming gate pass updated successfully',
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' },
+          message: { type: 'string' },
+        },
+      },
+      400: {
+        description: 'Bad request',
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+      404: {
+        description: 'Incoming gate pass not found',
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+      409: {
+        description: 'Conflict - gate pass number already exists',
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  preHandler: [authenticate],
+  config: {
+    rateLimit: {
+      max: 60,
+      timeWindow: '1 minute',
+    },
+  },
+};
+
 /**
  * Register incoming gate pass routes
  * @param fastify - Fastify instance
@@ -68,6 +173,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
               type: 'object',
               properties: { totalGradedBags: { type: 'number' } },
             },
+            stage: { type: 'string' },
             remarks: { type: 'string' },
             aadharCardNumber: { type: 'string' },
             panCardNumber: { type: 'string' },
@@ -366,106 +472,20 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
   // Update incoming gate pass
   fastify.put(
     '/:id',
+    incomingGatePassUpdateRouteOptions,
+    updateIncomingGatePassHandler as never
+  );
+
+  // Edit incoming gate pass (same behaviour as PUT; PATCH for partial updates)
+  fastify.patch(
+    '/:id',
     {
+      ...incomingGatePassUpdateRouteOptions,
       schema: {
-        ...updateIncomingGatePassSchema,
-        description: 'Update an incoming gate pass',
-        tags: ['Incoming Gate Pass'],
-        summary: 'Update incoming gate pass',
-        body: {
-          type: 'object',
-          properties: {
-            farmerStorageLinkId: { type: 'string' },
-            gatePassNo: { type: 'number' },
-            date: { type: 'string', format: 'date-time' },
-            variety: { type: 'string' },
-            category: {
-              type: 'string',
-              enum: categoryEnumValues,
-              description: 'Category of the gate pass',
-            },
-            truckNumber: { type: 'string' },
-            bagsReceived: { type: 'number' },
-            weightSlip: {
-              type: 'object',
-              properties: {
-                slipNumber: { type: 'string' },
-                grossWeightKg: { type: 'number' },
-                tareWeightKg: { type: 'number' },
-              },
-            },
-            status: {
-              type: 'string',
-              enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
-            },
-            gradingSummary: {
-              type: 'object',
-              properties: { totalGradedBags: { type: 'number' } },
-            },
-            remarks: { type: 'string' },
-            reason: { type: 'string' },
-          },
-        },
-        response: {
-          200: {
-            description: 'Incoming gate pass updated successfully',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: { type: 'object' },
-              message: { type: 'string' },
-            },
-          },
-          400: {
-            description: 'Bad request',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          404: {
-            description: 'Incoming gate pass not found',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          409: {
-            description: 'Conflict - gate pass number already exists',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate], // Require authentication
-      config: {
-        rateLimit: {
-          max: 60, // 60 requests per minute
-          timeWindow: '1 minute',
-        },
+        ...incomingGatePassUpdateRouteOptions.schema,
+        description:
+          'Edit an incoming gate pass (partial update; same request body as PUT /:id)',
+        summary: 'Edit incoming gate pass',
       },
     },
     updateIncomingGatePassHandler as never

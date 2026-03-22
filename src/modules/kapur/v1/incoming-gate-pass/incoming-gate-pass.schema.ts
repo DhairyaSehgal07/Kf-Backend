@@ -66,6 +66,12 @@ export const createIncomingGatePassSchema = z.object({
 
     gradingSummary: gradingSummarySchema.optional(),
 
+    stage: z
+      .string()
+      .trim()
+      .max(200, 'Stage must not exceed 200 characters')
+      .optional(),
+
     remarks: z
       .string()
       .trim()
@@ -143,6 +149,12 @@ export const updateIncomingGatePassSchema = z.object({
     status: z.nativeEnum(GatePassStatus).optional(),
 
     gradingSummary: gradingSummarySchema.optional(),
+
+    stage: z
+      .string()
+      .trim()
+      .max(200, 'Stage must not exceed 200 characters')
+      .optional(),
 
     remarks: z
       .string()

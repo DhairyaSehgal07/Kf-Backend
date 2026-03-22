@@ -294,6 +294,7 @@ export async function updateIncomingGatePass(
       'weightSlip',
       'status',
       'gradingSummary',
+      'stage',
       'remarks',
     ];
 

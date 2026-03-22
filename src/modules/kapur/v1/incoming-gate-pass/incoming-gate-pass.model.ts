@@ -53,6 +53,8 @@ export interface IIncomingGatePass extends Document {
   status: GatePassStatus;
   gradingSummary: IGradingSummary;
 
+  stage?: string;
+
   remarks?: string;
 
   createdAt: Date;
@@ -149,6 +151,11 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
     gradingSummary: {
       type: GradingSummarySchema,
       default: () => ({}),
+    },
+
+    stage: {
+      type: String,
+      trim: true,
     },
 
     remarks: {
