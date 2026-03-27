@@ -916,3 +916,171 @@ export async function getStorageGatePassesByFarmerStorageLink(
     );
   }
 }
+
+/**
+ * Retrieves edit history (audit entries) for a storage gate pass.
+ */
+export async function getStorageGatePassEditHistory(
+  storageGatePassId: string,
+  limit = 50,
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(storageGatePassId)) {
+      throw new ValidationError(
+        'Invalid storage gate pass ID format',
+        'INVALID_STORAGE_GATE_PASS_ID'
+      );
+    }
+
+    const exists = await StorageGatePass.exists({
+      _id: new mongoose.Types.ObjectId(storageGatePassId),
+    });
+
+    if (!exists) {
+      throw new NotFoundError(
+        'Storage gate pass not found',
+        'STORAGE_GATE_PASS_NOT_FOUND'
+      );
+    }
+
+    const normalizedLimit = Math.min(Math.max(limit, 1), 200);
+
+    const edits = await StorageGatePassAudit.find({
+      storageGatePassId: new mongoose.Types.ObjectId(storageGatePassId),
+    })
+      .populate({ path: 'editedById', select: 'name' })
+      .sort({ createdAt: -1 })
+      .limit(normalizedLimit)
+      .lean();
+
+    logger?.info(
+      { storageGatePassId, count: edits.length, limit: normalizedLimit },
+      'Retrieved storage gate pass edit history'
+    );
+
+    return edits;
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, storageGatePassId },
+      'Error retrieving storage gate pass edit history'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate pass edit history',
+      500,
+      'GET_STORAGE_GATE_PASS_EDIT_HISTORY_ERROR'
+    );
+  }
+}
+
+export interface GetStorageGatePassColdStorageEditHistoryOptions {
+  limit?: number;
+  page?: number;
+}
+
+/**
+ * Retrieves edit history for all storage gate passes under a cold storage.
+ */
+export async function getStorageGatePassEditHistoryByColdStorage(
+  coldStorageId: string,
+  options: GetStorageGatePassColdStorageEditHistoryOptions = {},
+  logger?: FastifyBaseLogger
+) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+    const page = Math.max(options.page ?? 1, 1);
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+    })
+      .distinct('_id')
+      .lean();
+
+    const storageGatePassIds = await StorageGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    if (storageGatePassIds.length === 0) {
+      return {
+        edits: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
+
+    const match = {
+      storageGatePassId: { $in: storageGatePassIds },
+    };
+
+    const [total, edits] = await Promise.all([
+      StorageGatePassAudit.countDocuments(match),
+      StorageGatePassAudit.find(match)
+        .populate({ path: 'editedById', select: 'name' })
+        .populate({
+          path: 'storageGatePassId',
+          select:
+            'gatePassNo manualGatePassNumber date variety storageCategory farmerStorageLinkId',
+          populate: {
+            path: 'farmerStorageLinkId',
+            select: 'accountNumber farmerId',
+            populate: { path: 'farmerId', select: 'name mobileNumber' },
+          },
+        })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    logger?.info(
+      { coldStorageId, count: edits.length, total, page, limit },
+      'Retrieved storage gate pass edit history by cold storage'
+    );
+
+    return {
+      edits,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving storage gate pass edit history by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate pass edit history',
+      500,
+      'GET_STORAGE_GATE_PASS_COLD_STORAGE_EDIT_HISTORY_ERROR'
+    );
+  }
+}

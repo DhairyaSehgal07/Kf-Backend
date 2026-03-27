@@ -151,6 +151,43 @@ export const updateStorageGatePassSchema = z.object({
   }),
 });
 
+export const getStorageGatePassEditHistorySchema = z.object({
+  params: z.object({
+    id: z
+      .string()
+      .trim()
+      .min(1, 'ID is required')
+      .refine(
+        (val) => mongoose.Types.ObjectId.isValid(val),
+        'Invalid ID format'
+      ),
+  }),
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int('Limit must be an integer')
+      .min(1, 'Limit must be at least 1')
+      .max(200, 'Limit must be at most 200')
+      .optional(),
+  }),
+});
+
+export const getStorageGatePassColdStorageEditHistorySchema = z.object({
+  query: z.object({
+    limit: z.coerce
+      .number()
+      .int('Limit must be an integer')
+      .min(1, 'Limit must be at least 1')
+      .max(200, 'Limit must be at most 200')
+      .optional(),
+    page: z.coerce
+      .number()
+      .int('Page must be an integer')
+      .min(1, 'Page must be at least 1')
+      .optional(),
+  }),
+});
+
 export type CreateStorageGatePassInput = z.infer<
   typeof singleStorageGatePassCreateSchema
 >;
@@ -166,3 +203,15 @@ export type UpdateStorageGatePassInput = z.infer<
 export type UpdateStorageGatePassParams = z.infer<
   typeof updateStorageGatePassSchema
 >['params'];
+
+export type GetStorageGatePassEditHistoryParams = z.infer<
+  typeof getStorageGatePassEditHistorySchema
+>['params'];
+
+export type GetStorageGatePassEditHistoryQuery = z.infer<
+  typeof getStorageGatePassEditHistorySchema
+>['query'];
+
+export type GetStorageGatePassColdStorageEditHistoryQuery = z.infer<
+  typeof getStorageGatePassColdStorageEditHistorySchema
+>['query'];

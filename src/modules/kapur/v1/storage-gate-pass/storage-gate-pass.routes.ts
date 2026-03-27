@@ -3,6 +3,8 @@ import {
   createStorageGatePassHandler,
   createStorageGatePassBulkHandler,
   updateStorageGatePassHandler,
+  getStorageGatePassEditHistoryByColdStorageHandler,
+  getStorageGatePassEditHistoryHandler,
   getStorageGatePassesByColdStorageHandler,
   getStorageGatePassesByColdStorageGroupedHandler,
   getStorageGatePassesByFarmerStorageLinkHandler,
@@ -11,6 +13,8 @@ import {
   createStorageGatePassSchema,
   createBulkStorageGatePassSchema,
   updateStorageGatePassSchema,
+  getStorageGatePassColdStorageEditHistorySchema,
+  getStorageGatePassEditHistorySchema,
 } from './storage-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
@@ -200,6 +204,176 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
   );
 
   // Get storage gate passes for authenticated user's cold storage (pagination + search)
+  fastify.get(
+    '/edits',
+    {
+      schema: {
+        ...getStorageGatePassColdStorageEditHistorySchema,
+        description:
+          "Get edit history for all storage gate passes in the authenticated store admin's cold storage.",
+        tags: ['Storage Gate Pass'],
+        summary: 'Get storage gate pass edit history for current cold storage',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 50, max 200)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Paginated edit history across all storage gate passes for current cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  edits: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getStorageGatePassEditHistoryByColdStorageHandler as never
+  );
+
+  fastify.get(
+    '/:id/edits',
+    {
+      schema: {
+        ...getStorageGatePassEditHistorySchema,
+        description: 'Get edit history for a storage gate pass by ID.',
+        tags: ['Storage Gate Pass'],
+        summary: 'Get storage gate pass edit history',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', description: 'Storage gate pass ID' },
+          },
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description:
+                'Number of edit entries to return (default 50, max 200)',
+            },
+          },
+        },
+        response: {
+          200: {
+            description: 'Storage gate pass edit history',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  edits: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Storage gate pass not found',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getStorageGatePassEditHistoryHandler as never
+  );
+
   fastify.get(
     '/',
     {
@@ -518,8 +692,39 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
             variety: { type: 'string', description: 'Variety' },
             bagSizes: {
               type: 'array',
-              items: { type: 'object', additionalProperties: true },
-              description: 'Bag sizes',
+              items: {
+                type: 'object',
+                required: [
+                  'size',
+                  'bagType',
+                  'currentQuantity',
+                  'initialQuantity',
+                  'chamber',
+                  'floor',
+                  'row',
+                ],
+                properties: {
+                  size: { type: 'string', description: 'Bag size (e.g. 50kg)' },
+                  bagType: {
+                    type: 'string',
+                    enum: ['JUTE', 'LENO'],
+                    description: 'Bag type',
+                  },
+                  currentQuantity: {
+                    type: 'number',
+                    description: 'Current quantity in this bag slot',
+                  },
+                  initialQuantity: {
+                    type: 'number',
+                    description: 'Initial quantity in this bag slot',
+                  },
+                  chamber: { type: 'string', description: 'Chamber location' },
+                  floor: { type: 'string', description: 'Floor location' },
+                  row: { type: 'string', description: 'Row location' },
+                },
+              },
+              description:
+                'Bag details. Same shape as create payload for bagSizes.',
             },
             remarks: { type: 'string', description: 'Remarks' },
             reason: {

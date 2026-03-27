@@ -3,6 +3,8 @@ import {
   createStorageGatePass,
   createStorageGatePassBulk,
   updateStorageGatePass,
+  getStorageGatePassEditHistory,
+  getStorageGatePassEditHistoryByColdStorage,
   getPaginatedStorageGatePassesByColdStorage,
   getStorageGatePassesByColdStorageGrouped,
   getStorageGatePassesByFarmerStorageLink,
@@ -11,6 +13,9 @@ import {
   createStorageGatePassSchema,
   CreateStorageGatePassBody,
   CreateBulkStorageGatePassBody,
+  GetStorageGatePassColdStorageEditHistoryQuery,
+  GetStorageGatePassEditHistoryParams,
+  GetStorageGatePassEditHistoryQuery,
   UpdateStorageGatePassInput,
   UpdateStorageGatePassParams,
 } from './storage-gate-pass.schema.js';
@@ -585,6 +590,169 @@ export async function updateStorageGatePassHandler(
     }
 
     // Fallback for unexpected errors
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving storage gate pass edit history
+ */
+export async function getStorageGatePassEditHistoryHandler(
+  request: FastifyRequest<{
+    Params: GetStorageGatePassEditHistoryParams;
+    Querystring: GetStorageGatePassEditHistoryQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const { id } = request.params;
+    const { limit = 50 } = request.query;
+
+    const edits = await getStorageGatePassEditHistory(id, limit, request.log);
+
+    return reply.send({
+      success: true,
+      data: {
+        edits,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params, query: request.query },
+      'Error in getStorageGatePassEditHistoryHandler'
+    );
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving storage gate pass edit history for current cold storage
+ */
+export async function getStorageGatePassEditHistoryByColdStorageHandler(
+  request: FastifyRequest<{
+    Querystring: GetStorageGatePassColdStorageEditHistoryQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { limit = 50, page = 1 } = request.query;
+    const result = await getStorageGatePassEditHistoryByColdStorage(
+      coldStorageId,
+      { limit, page },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        edits: result.edits,
+        pagination: result.pagination,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageGatePassEditHistoryByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
     return reply.code(500).send({
       success: false,
       error: {

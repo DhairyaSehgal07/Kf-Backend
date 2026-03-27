@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-03-27
+
+### Added
+
+- **Storage Gate Pass - Edit history APIs**
+  - New authenticated endpoints under `/api/v1/storage-gate-pass`:
+    - GET `/edits` - paginated edit history across all storage gate passes for the logged-in cold storage (`limit`, `page`).
+    - GET `/:id/edits` - edit history for a single storage gate pass (`limit`).
+  - Added schema/query/params validation for edit history routes and new service methods to fetch audit entries with pagination and related user/gate-pass context population.
+
+### Changed
+
+- **Storage Gate Pass - Update schema docs**
+  - Update route OpenAPI docs now define detailed `bagSizes` item shape (size, bagType, quantities, chamber/floor/row) instead of loose objects.
+
+---
+
 ## [1.18.0] - 2026-03-17
 
 ### Added
