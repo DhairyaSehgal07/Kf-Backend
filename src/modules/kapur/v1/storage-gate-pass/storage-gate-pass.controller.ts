@@ -703,10 +703,8 @@ export async function getStorageGatePassEditHistoryByColdStorageHandler(
       );
     }
 
-    const { limit = 50, page = 1 } = request.query;
     const result = await getStorageGatePassEditHistoryByColdStorage(
       coldStorageId,
-      { limit, page },
       request.log
     );
 
@@ -714,7 +712,6 @@ export async function getStorageGatePassEditHistoryByColdStorageHandler(
       success: true,
       data: {
         edits: result.edits,
-        pagination: result.pagination,
       },
     });
   } catch (error) {

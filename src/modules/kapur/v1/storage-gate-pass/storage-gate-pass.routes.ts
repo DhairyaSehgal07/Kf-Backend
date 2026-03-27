@@ -213,20 +213,10 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
           "Get edit history for all storage gate passes in the authenticated store admin's cold storage.",
         tags: ['Storage Gate Pass'],
         summary: 'Get storage gate pass edit history for current cold storage',
-        querystring: {
-          type: 'object',
-          properties: {
-            limit: {
-              type: 'number',
-              description: 'Items per page (default 50, max 200)',
-            },
-            page: { type: 'number', description: 'Page number (default 1)' },
-          },
-        },
         response: {
           200: {
             description:
-              'Paginated edit history across all storage gate passes for current cold storage',
+              'All edit history across storage gate passes for current cold storage',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -236,15 +226,6 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
                   edits: {
                     type: 'array',
                     items: { type: 'object', additionalProperties: true },
-                  },
-                  pagination: {
-                    type: 'object',
-                    properties: {
-                      page: { type: 'number' },
-                      limit: { type: 'number' },
-                      total: { type: 'number' },
-                      totalPages: { type: 'number' },
-                    },
                   },
                 },
               },
@@ -674,6 +655,10 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
         body: {
           type: 'object',
           properties: {
+            farmerStorageLinkId: {
+              type: 'string',
+              description: 'Farmer storage link ID (re-link this gate pass)',
+            },
             gatePassNo: { type: 'number', description: 'Gate pass number' },
             manualGatePassNumber: {
               type: ['number', 'null'],

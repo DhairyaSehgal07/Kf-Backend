@@ -27,7 +27,7 @@ import { RentalStorageGatePass } from '../modules/kapur/v1/rental-storage-gate-p
 import { RolePermission } from '../modules/kapur/v1/role-permission/role-permission.model.js';
 import { ShortageStock } from '../modules/kapur/v1/shortage-stock/shortage-stock.model.js';
 import { StorageGatePass } from '../modules/kapur/v1/storage-gate-pass/storage-gate-pass.model.js';
-import { StorageGatePassAudit } from '../modules/kapur/v1/storage-gate-pass/storage-gate-pass-audit.model.js';
+import { EditHistory } from '../modules/kapur/v1/storage-gate-pass/edit-history.model.js';
 import { StoreAdmin } from '../modules/kapur/v1/store-admin/store-admin.model.js';
 import { Temperature } from '../modules/kapur/v1/temperature/temperature.model.js';
 
@@ -46,7 +46,7 @@ const MODELS = [
   RolePermission,
   ShortageStock,
   StorageGatePass,
-  StorageGatePassAudit,
+  EditHistory,
   StoreAdmin,
   Temperature,
 ] as const;

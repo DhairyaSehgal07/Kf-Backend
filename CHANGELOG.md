@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-03-27
+
+### Added
+
+- **Unified edit history model**
+  - Added new `EditHistory` model at `src/modules/kapur/v1/storage-gate-pass/edit-history.model.ts` with `entityType`, `documentId`, `coldStorageId`, `editedBy`, `editedAt`, `action`, `changeSummary`, and optional before/after snapshots.
+  - Added `storage_gate_pass` entity support in `EditHistoryEntityType`.
+
+- **Storage Gate Pass update enhancements**
+  - PUT `/api/v1/storage-gate-pass/:id` now supports updating `farmerStorageLinkId`.
+  - Update route docs now explicitly support create-like `bagSizes` payload fields including `bagType`, `chamber`, `floor`, and `row`.
+
+### Changed
+
+- **Storage edit history persistence**
+  - Storage gate pass edits now write to `EditHistory` instead of the legacy `StorageGatePassAudit` model.
+  - Edit history entries are recorded for successful update requests with change summary and snapshots.
+
+- **Storage edit history API**
+  - GET `/api/v1/storage-gate-pass/edits` now returns all edit documents for the logged-in cold storage (pagination removed).
+  - GET `/api/v1/storage-gate-pass/:id/edits` reads from `EditHistory` for per-document history.
+
+### Removed
+
+- **Legacy storage audit model**
+  - Removed `src/modules/kapur/v1/storage-gate-pass/storage-gate-pass-audit.model.ts`.
+
+---
+
 ## [1.19.0] - 2026-03-27
 
 ### Added

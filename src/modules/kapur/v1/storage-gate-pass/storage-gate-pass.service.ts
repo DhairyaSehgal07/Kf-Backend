@@ -1,7 +1,11 @@
 import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { StorageGatePass } from './storage-gate-pass.model.js';
-import { StorageGatePassAudit } from './storage-gate-pass-audit.model.js';
+import {
+  EditHistory,
+  EditHistoryAction,
+  EditHistoryEntityType,
+} from './edit-history.model.js';
 import type {
   CreateStorageGatePassInput,
   CreateStorageGatePassBody,
@@ -369,36 +373,56 @@ export async function updateStorageGatePass(
       );
     }
 
-    if (payload.gatePassNo && payload.gatePassNo !== existing.gatePassNo) {
-      const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-      const existingRecord = existing as {
-        farmerStorageLinkId: Types.ObjectId;
-      };
-      const currentLink = await FarmerStorageLink.findById(
-        existingRecord.farmerStorageLinkId
-      ).lean();
-      const coldStorageId = (
-        currentLink as {
-          coldStorageId?: mongoose.Types.ObjectId;
-        }
-      )?.coldStorageId;
-      if (coldStorageId) {
-        const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find(
-          { coldStorageId }
-        )
-          .distinct('_id')
-          .lean();
-        const conflict = await StorageGatePass.findOne({
-          gatePassNo: payload.gatePassNo,
-          _id: { $ne: id },
-          farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
-        });
-        if (conflict) {
-          throw new ConflictError(
-            'Gate pass with this number already exists for this cold storage',
-            'GATE_PASS_NUMBER_EXISTS'
-          );
-        }
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const existingRecord = existing as {
+      farmerStorageLinkId: Types.ObjectId;
+      gatePassNo: number;
+    };
+
+    const targetFarmerStorageLinkId =
+      payload.farmerStorageLinkId ??
+      (existingRecord.farmerStorageLinkId as Types.ObjectId).toString();
+    const targetGatePassNo = payload.gatePassNo ?? existingRecord.gatePassNo;
+
+    const targetLink = await FarmerStorageLink.findById(
+      targetFarmerStorageLinkId
+    ).lean();
+    const targetColdStorageId = (
+      targetLink as {
+        coldStorageId?: mongoose.Types.ObjectId;
+      }
+    )?.coldStorageId;
+
+    if (!targetColdStorageId) {
+      throw new NotFoundError(
+        'Farmer storage link not found',
+        'FARMER_STORAGE_LINK_NOT_FOUND'
+      );
+    }
+
+    const shouldCheckConflict =
+      payload.gatePassNo !== undefined ||
+      (payload.farmerStorageLinkId !== undefined &&
+        payload.farmerStorageLinkId !==
+          (existingRecord.farmerStorageLinkId as Types.ObjectId).toString());
+
+    if (shouldCheckConflict) {
+      const farmerStorageLinkIdsForColdStorage = await FarmerStorageLink.find({
+        coldStorageId: targetColdStorageId,
+      })
+        .distinct('_id')
+        .lean();
+
+      const conflict = await StorageGatePass.findOne({
+        gatePassNo: targetGatePassNo,
+        _id: { $ne: id },
+        farmerStorageLinkId: { $in: farmerStorageLinkIdsForColdStorage },
+      });
+      if (conflict) {
+        throw new ConflictError(
+          'Gate pass with this number already exists for this cold storage',
+          'GATE_PASS_NUMBER_EXISTS'
+        );
       }
     }
 
@@ -412,18 +436,14 @@ export async function updateStorageGatePass(
       delete updateDataForSave.manualGatePassNumber;
     }
 
-    const auditEntries: Array<{
-      storageGatePassId: Types.ObjectId;
-      editedById?: Types.ObjectId;
+    const auditDiffs: Array<{
       field: string;
       oldValue: unknown;
       newValue: unknown;
-      reason?: string;
-      ipAddress?: string;
-      userAgent?: string;
     }> = [];
 
     const fieldsToCheck = [
+      'farmerStorageLinkId',
       'gatePassNo',
       'manualGatePassNumber',
       'date',
@@ -438,6 +458,20 @@ export async function updateStorageGatePass(
       if (newValue === undefined) continue;
       const existingRecord = existing as unknown as Record<string, unknown>;
       const oldValue = existingRecord[field];
+      if (field === 'farmerStorageLinkId') {
+        const oldValueString =
+          oldValue instanceof Types.ObjectId ? oldValue.toString() : oldValue;
+        const newValueString =
+          newValue instanceof Types.ObjectId ? newValue.toString() : newValue;
+        if (oldValueString !== newValueString) {
+          auditDiffs.push({
+            field,
+            oldValue,
+            newValue,
+          });
+        }
+        continue;
+      }
       if (
         typeof oldValue === 'object' &&
         oldValue !== null &&
@@ -445,27 +479,17 @@ export async function updateStorageGatePass(
         newValue !== null
       ) {
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-          auditEntries.push({
-            storageGatePassId: existing._id,
-            editedById: editedById ? new Types.ObjectId(editedById) : undefined,
+          auditDiffs.push({
             field,
             oldValue,
             newValue,
-            reason,
-            ipAddress: requestMetadata?.ipAddress,
-            userAgent: requestMetadata?.userAgent,
           });
         }
       } else if (oldValue !== newValue) {
-        auditEntries.push({
-          storageGatePassId: existing._id,
-          editedById: editedById ? new Types.ObjectId(editedById) : undefined,
+        auditDiffs.push({
           field,
           oldValue,
           newValue,
-          reason,
-          ipAddress: requestMetadata?.ipAddress,
-          userAgent: requestMetadata?.userAgent,
         });
       }
     }
@@ -492,14 +516,54 @@ export async function updateStorageGatePass(
       );
     }
 
-    if (auditEntries.length > 0) {
-      await StorageGatePassAudit.insertMany(auditEntries);
+    const actorId =
+      editedById ??
+      (
+        existing as unknown as { createdBy?: Types.ObjectId }
+      ).createdBy?.toString() ??
+      undefined;
+
+    if (!actorId) {
+      logger?.warn(
+        { storageGatePassId: id },
+        'Skipping edit history write: editor user id unavailable'
+      );
+    } else {
+      const now = new Date();
+      await EditHistory.create({
+        entityType: EditHistoryEntityType.STORAGE_GATE_PASS,
+        documentId: existing._id,
+        coldStorageId: targetColdStorageId,
+        editedBy: new Types.ObjectId(actorId),
+        editedAt: now,
+        action: EditHistoryAction.UPDATE,
+        changeSummary:
+          reason ??
+          (auditDiffs.length > 0
+            ? `Updated fields: ${auditDiffs.map((d) => d.field).join(', ')}`
+            : 'Storage gate pass update requested'),
+        snapshotBefore: {
+          changedFields: auditDiffs.map((d) => ({
+            field: d.field,
+            value: d.oldValue,
+          })),
+          requestMetadata,
+        },
+        snapshotAfter: {
+          changedFields: auditDiffs.map((d) => ({
+            field: d.field,
+            value: d.newValue,
+          })),
+          requestMetadata,
+        },
+      });
+
       logger?.info(
         {
           storageGatePassId: id,
-          fieldsChanged: auditEntries.map((e) => e.field),
+          fieldsChanged: auditDiffs.map((e) => e.field),
         },
-        'Audit entries created'
+        'Edit history entry created'
       );
     }
 
@@ -946,11 +1010,12 @@ export async function getStorageGatePassEditHistory(
 
     const normalizedLimit = Math.min(Math.max(limit, 1), 200);
 
-    const edits = await StorageGatePassAudit.find({
-      storageGatePassId: new mongoose.Types.ObjectId(storageGatePassId),
+    const edits = await EditHistory.find({
+      entityType: EditHistoryEntityType.STORAGE_GATE_PASS,
+      documentId: new mongoose.Types.ObjectId(storageGatePassId),
     })
-      .populate({ path: 'editedById', select: 'name' })
-      .sort({ createdAt: -1 })
+      .populate({ path: 'editedBy', select: 'name' })
+      .sort({ editedAt: -1 })
       .limit(normalizedLimit)
       .lean();
 
@@ -978,17 +1043,11 @@ export async function getStorageGatePassEditHistory(
   }
 }
 
-export interface GetStorageGatePassColdStorageEditHistoryOptions {
-  limit?: number;
-  page?: number;
-}
-
 /**
  * Retrieves edit history for all storage gate passes under a cold storage.
  */
 export async function getStorageGatePassEditHistoryByColdStorage(
   coldStorageId: string,
-  options: GetStorageGatePassColdStorageEditHistoryOptions = {},
   logger?: FastifyBaseLogger
 ) {
   try {
@@ -999,73 +1058,33 @@ export async function getStorageGatePassEditHistoryByColdStorage(
       );
     }
 
-    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-    const page = Math.max(options.page ?? 1, 1);
-
-    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-    const farmerStorageLinkIds = await FarmerStorageLink.find({
-      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
-    })
-      .distinct('_id')
-      .lean();
-
-    const storageGatePassIds = await StorageGatePass.find({
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    })
-      .distinct('_id')
-      .lean();
-
-    if (storageGatePassIds.length === 0) {
-      return {
-        edits: [],
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          totalPages: 0,
-        },
-      };
-    }
-
     const match = {
-      storageGatePassId: { $in: storageGatePassIds },
+      entityType: EditHistoryEntityType.STORAGE_GATE_PASS,
+      coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
     };
 
-    const [total, edits] = await Promise.all([
-      StorageGatePassAudit.countDocuments(match),
-      StorageGatePassAudit.find(match)
-        .populate({ path: 'editedById', select: 'name' })
-        .populate({
-          path: 'storageGatePassId',
-          select:
-            'gatePassNo manualGatePassNumber date variety storageCategory farmerStorageLinkId',
-          populate: {
-            path: 'farmerStorageLinkId',
-            select: 'accountNumber farmerId',
-            populate: { path: 'farmerId', select: 'name mobileNumber' },
-          },
-        })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-    ]);
-
-    const totalPages = Math.ceil(total / limit);
+    const edits = await EditHistory.find(match)
+      .populate({ path: 'editedBy', select: 'name' })
+      .populate({
+        path: 'documentId',
+        select:
+          'gatePassNo manualGatePassNumber date variety storageCategory farmerStorageLinkId',
+        populate: {
+          path: 'farmerStorageLinkId',
+          select: 'accountNumber farmerId',
+          populate: { path: 'farmerId', select: 'name mobileNumber' },
+        },
+      })
+      .sort({ editedAt: -1 })
+      .lean();
 
     logger?.info(
-      { coldStorageId, count: edits.length, total, page, limit },
+      { coldStorageId, count: edits.length },
       'Retrieved storage gate pass edit history by cold storage'
     );
 
     return {
       edits,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
     };
   } catch (error) {
     if (error instanceof ValidationError) {
