@@ -8,6 +8,7 @@ import {
   getStorageGatePassesByColdStorageHandler,
   getStorageGatePassesByColdStorageGroupedHandler,
   getStorageGatePassesByFarmerStorageLinkHandler,
+  getIncomingGatePassVarietiesHandler,
 } from './storage-gate-pass.controller.js';
 import {
   createStorageGatePassSchema,
@@ -353,6 +354,72 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getStorageGatePassEditHistoryHandler as never
+  );
+
+  fastify.get(
+    '/incoming-varieties',
+    {
+      schema: {
+        description:
+          'Get all distinct varieties from incoming gate passes using an aggregate pipeline.',
+        tags: ['Storage Gate Pass'],
+        summary: 'Get incoming gate pass varieties',
+        response: {
+          200: {
+            description: 'List of distinct incoming gate pass varieties',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  varieties: {
+                    type: 'array',
+                    items: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassVarietiesHandler as never
   );
 
   fastify.get(

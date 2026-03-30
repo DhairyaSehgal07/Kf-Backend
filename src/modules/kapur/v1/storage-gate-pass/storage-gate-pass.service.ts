@@ -1,6 +1,7 @@
 import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { StorageGatePass } from './storage-gate-pass.model.js';
+import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model.js';
 import {
   EditHistory,
   EditHistoryAction,
@@ -977,6 +978,65 @@ export async function getStorageGatePassesByFarmerStorageLink(
       'Failed to retrieve storage gate passes by farmer storage link',
       500,
       'GET_STORAGE_GATE_PASSES_BY_FARMER_STORAGE_LINK_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves distinct incoming gate pass varieties across all incoming gate passes.
+ * Uses MongoDB aggregate pipeline and returns sorted, trimmed, non-empty variety names.
+ */
+export async function getIncomingGatePassVarieties(
+  logger?: FastifyBaseLogger
+): Promise<string[]> {
+  try {
+    const varieties = await IncomingGatePass.aggregate<{ variety: string }>([
+      {
+        $match: {
+          variety: { $type: 'string' },
+        },
+      },
+      {
+        $project: {
+          variety: { $trim: { input: '$variety' } },
+        },
+      },
+      {
+        $match: {
+          variety: { $ne: '' },
+        },
+      },
+      {
+        $group: {
+          _id: '$variety',
+        },
+      },
+      {
+        $sort: {
+          _id: 1,
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          variety: '$_id',
+        },
+      },
+    ]).exec();
+
+    logger?.info(
+      { count: varieties.length },
+      'Retrieved incoming gate pass varieties'
+    );
+
+    return varieties.map((item) => item.variety);
+  } catch (error) {
+    logger?.error({ error }, 'Error retrieving incoming gate pass varieties');
+
+    throw new AppError(
+      'Failed to retrieve incoming gate pass varieties',
+      500,
+      'GET_INCOMING_GATE_PASS_VARIETIES_ERROR'
     );
   }
 }

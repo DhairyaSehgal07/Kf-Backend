@@ -8,6 +8,7 @@ import {
   getPaginatedStorageGatePassesByColdStorage,
   getStorageGatePassesByColdStorageGrouped,
   getStorageGatePassesByFarmerStorageLink,
+  getIncomingGatePassVarieties,
 } from './storage-gate-pass.service.js';
 import {
   createStorageGatePassSchema,
@@ -480,6 +481,53 @@ export async function getStorageGatePassesByFarmerStorageLinkHandler(
         },
       });
     }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving distinct incoming gate pass varieties.
+ */
+export async function getIncomingGatePassVarietiesHandler(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const varieties = await getIncomingGatePassVarieties(request.log);
+
+    return reply.send({
+      success: true,
+      data: {
+        varieties,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error },
+      'Error in getIncomingGatePassVarietiesHandler'
+    );
 
     if (error instanceof AppError) {
       return reply.code(error.statusCode).send({
