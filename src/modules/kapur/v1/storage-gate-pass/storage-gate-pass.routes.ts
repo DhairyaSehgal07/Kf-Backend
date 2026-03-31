@@ -427,7 +427,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          "Get storage gate passes for the authenticated store admin's cold storage. Supports pagination (limit, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo, and optional filters dateFrom/dateTo (inclusive) and variety. If gatePassNo is provided and no match exists, returns 404.",
+          "Get storage gate passes for the authenticated store admin's cold storage. Supports pagination (limit, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo (matches system gate pass number OR manual gate pass number), and optional filters dateFrom/dateTo (inclusive) and variety. If gatePassNo is provided and no match exists, returns 404.",
         tags: ['Storage Gate Pass'],
         summary: 'Get all storage gate passes for current cold storage',
         querystring: {
@@ -446,7 +446,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
             gatePassNo: {
               type: 'number',
               description:
-                'Search by gate pass number. Returns the single matching storage gate pass or 404 if not found.',
+                'Search by voucher number: matches system gate pass number or manual gate pass number. Returns paginated matches or 404 if none.',
             },
             dateFrom: {
               type: 'string',

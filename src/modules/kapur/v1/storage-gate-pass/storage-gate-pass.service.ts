@@ -591,7 +591,10 @@ export interface GetPaginatedStorageGatePassesByColdStorageOptions extends Stora
   limit?: number;
   page?: number;
   sortOrder?: 'asc' | 'desc';
-  /** When set, returns the single matching storage gate pass or throws NotFoundError */
+  /**
+   * When set, matches documents where this value equals either `gatePassNo` or
+   * `manualGatePassNumber`. Returns matching rows (paginated) or throws NotFoundError if none.
+   */
   gatePassNo?: number;
 }
 
@@ -604,7 +607,8 @@ export interface StorageGatePassesPagination {
 
 /**
  * Retrieves storage gate passes for a cold storage with pagination.
- * When gatePassNo is provided, returns the single matching gate pass or throws NotFoundError.
+ * When gatePassNo is provided, filters to rows where that number equals either system
+ * gatePassNo or manualGatePassNumber. Throws NotFoundError if no row matches.
  */
 export async function getPaginatedStorageGatePassesByColdStorage(
   coldStorageId: string,
@@ -642,7 +646,7 @@ export async function getPaginatedStorageGatePassesByColdStorage(
     };
 
     if (gatePassNo != null) {
-      match.gatePassNo = gatePassNo;
+      match.$or = [{ gatePassNo }, { manualGatePassNumber: gatePassNo }];
     }
 
     if (options.dateFrom) {
@@ -695,7 +699,7 @@ export async function getPaginatedStorageGatePassesByColdStorage(
 
     if (gatePassNo != null && total === 0) {
       throw new NotFoundError(
-        `Storage gate pass with gate pass number ${gatePassNo} not found`,
+        `No storage gate pass with voucher number ${gatePassNo} (system or manual)`,
         'STORAGE_GATE_PASS_NOT_FOUND'
       );
     }
