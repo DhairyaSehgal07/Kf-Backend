@@ -1,22 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import {
   createStorageGatePassHandler,
-  createStorageGatePassBulkHandler,
-  updateStorageGatePassHandler,
-  getStorageGatePassEditHistoryByColdStorageHandler,
-  getStorageGatePassEditHistoryHandler,
   getStorageGatePassesByColdStorageHandler,
-  getStorageGatePassesByColdStorageGroupedHandler,
-  getStorageGatePassesByFarmerStorageLinkHandler,
-  getIncomingGatePassVarietiesHandler,
+  searchStorageGatePassHandler,
 } from './storage-gate-pass.controller.js';
-import {
-  createStorageGatePassSchema,
-  createBulkStorageGatePassSchema,
-  updateStorageGatePassSchema,
-  getStorageGatePassColdStorageEditHistorySchema,
-  getStorageGatePassEditHistorySchema,
-} from './storage-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 /**
@@ -24,12 +11,10 @@ import { authenticate } from '../../../../utils/auth.js';
  * @param fastify - Fastify instance
  */
 export async function storageGatePassRoutes(fastify: FastifyInstance) {
-  // Create storage gate pass endpoint
   fastify.post(
     '/',
     {
       schema: {
-        ...createStorageGatePassSchema,
         description: 'Create a new storage gate pass',
         tags: ['Storage Gate Pass'],
         summary: 'Create storage gate pass',
@@ -78,91 +63,13 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
             description: 'Storage gate pass created successfully',
             type: 'object',
             properties: {
-              success: { type: 'boolean' },
-              data: { type: 'object', additionalProperties: true },
+              status: { type: 'string' },
               message: { type: 'string' },
+              data: { type: 'object', additionalProperties: true },
             },
           },
           400: {
             description: 'Bad request',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          404: {
-            description: 'Grading gate pass not found',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          409: {
-            description: 'Conflict - gate pass number already exists',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate], // Require authentication
-      config: {
-        rateLimit: {
-          max: 60, // 60 requests per minute
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    createStorageGatePassHandler as never
-  );
-
-  // Bulk create storage gate passes (transactional; rollback on any failure; one storage gate pass per grading gate pass)
-  fastify.post(
-    '/bulk',
-    {
-      schema: {
-        ...createBulkStorageGatePassSchema,
-        description:
-          'Create multiple storage gate passes in one request. For each grading gate pass in the payload there is one storage gate pass created. Gate pass numbers start from the gatePassNo in the payload (first pass per cold storage) and increment for each new pass. All created in a single transaction; if any pass fails validation or DB rules, everything is rolled back.',
-        tags: ['Storage Gate Pass'],
-        summary: 'Bulk create storage gate passes',
-        response: {
-          201: {
-            description: 'Storage gate passes created successfully',
-            type: 'object',
-            properties: {
-              status: { type: 'string' },
-              message: { type: 'string' },
-              data: {
-                type: 'array',
-                items: { type: 'object', additionalProperties: true },
-              },
-            },
-          },
-          400: {
-            description: 'Bad request / validation error',
             type: 'object',
             properties: {
               status: { type: 'string' },
@@ -172,7 +79,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
             },
           },
           404: {
-            description: 'Farmer storage link or grading gate pass not found',
+            description: 'Farmer storage link not found',
             type: 'object',
             properties: {
               status: { type: 'string' },
@@ -196,35 +103,43 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 30,
+          max: 60,
           timeWindow: '1 minute',
         },
       },
     },
-    createStorageGatePassBulkHandler as never
+    createStorageGatePassHandler as never
   );
 
-  // Get storage gate passes for authenticated user's cold storage (pagination + search)
-  fastify.get(
-    '/edits',
+  fastify.post(
+    '/search',
     {
       schema: {
-        ...getStorageGatePassColdStorageEditHistorySchema,
         description:
-          "Get edit history for all storage gate passes in the authenticated store admin's cold storage.",
+          "Search storage gate passes for the authenticated store admin's cold storage. Matches documents where the provided number equals either gatePassNo or manualGatePassNumber.",
         tags: ['Storage Gate Pass'],
-        summary: 'Get storage gate pass edit history for current cold storage',
+        summary: 'Search storage gate passes by number',
+        body: {
+          type: 'object',
+          required: ['number'],
+          properties: {
+            number: {
+              type: 'number',
+              description:
+                'Gate pass number to search. Matches gatePassNo or manualGatePassNumber.',
+            },
+          },
+        },
         response: {
           200: {
-            description:
-              'All edit history across storage gate passes for current cold storage',
+            description: 'Matching storage gate passes (may be empty)',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
                 type: 'object',
                 properties: {
-                  edits: {
+                  storageGatePasses: {
                     type: 'array',
                     items: { type: 'object', additionalProperties: true },
                   },
@@ -270,156 +185,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    getStorageGatePassEditHistoryByColdStorageHandler as never
-  );
-
-  fastify.get(
-    '/:id/edits',
-    {
-      schema: {
-        ...getStorageGatePassEditHistorySchema,
-        description: 'Get edit history for a storage gate pass by ID.',
-        tags: ['Storage Gate Pass'],
-        summary: 'Get storage gate pass edit history',
-        params: {
-          type: 'object',
-          required: ['id'],
-          properties: {
-            id: { type: 'string', description: 'Storage gate pass ID' },
-          },
-        },
-        querystring: {
-          type: 'object',
-          properties: {
-            limit: {
-              type: 'number',
-              description:
-                'Number of edit entries to return (default 50, max 200)',
-            },
-          },
-        },
-        response: {
-          200: {
-            description: 'Storage gate pass edit history',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: {
-                type: 'object',
-                properties: {
-                  edits: {
-                    type: 'array',
-                    items: { type: 'object', additionalProperties: true },
-                  },
-                },
-              },
-            },
-          },
-          400: {
-            description: 'Bad request',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          404: {
-            description: 'Storage gate pass not found',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate],
-      config: {
-        rateLimit: {
-          max: 120,
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    getStorageGatePassEditHistoryHandler as never
-  );
-
-  fastify.get(
-    '/incoming-varieties',
-    {
-      schema: {
-        description:
-          'Get all distinct varieties from incoming gate passes using an aggregate pipeline.',
-        tags: ['Storage Gate Pass'],
-        summary: 'Get incoming gate pass varieties',
-        response: {
-          200: {
-            description: 'List of distinct incoming gate pass varieties',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: {
-                type: 'object',
-                properties: {
-                  varieties: {
-                    type: 'array',
-                    items: { type: 'string' },
-                  },
-                },
-              },
-            },
-          },
-          401: {
-            description: 'Unauthorized',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          500: {
-            description: 'Internal server error',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate],
-      config: {
-        rateLimit: {
-          max: 120,
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    getIncomingGatePassVarietiesHandler as never
+    searchStorageGatePassHandler as never
   );
 
   fastify.get(
@@ -427,7 +193,7 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          "Get storage gate passes for the authenticated store admin's cold storage. Supports pagination (limit, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo (matches system gate pass number OR manual gate pass number), and optional filters dateFrom/dateTo (inclusive) and variety. If gatePassNo is provided and no match exists, returns 404.",
+          "Get storage gate passes for the authenticated store admin's cold storage. Supports pagination (limit, page), sortOrder (asc | desc) by gate pass number (default desc), and optional filters dateFrom/dateTo (inclusive).",
         tags: ['Storage Gate Pass'],
         summary: 'Get all storage gate passes for current cold storage',
         querystring: {
@@ -443,11 +209,6 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
               enum: ['asc', 'desc'],
               description: 'Sort by gate pass number (default desc)',
             },
-            gatePassNo: {
-              type: 'number',
-              description:
-                'Search by voucher number: matches system gate pass number or manual gate pass number. Returns paginated matches or 404 if none.',
-            },
             dateFrom: {
               type: 'string',
               format: 'date',
@@ -460,16 +221,11 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
               description:
                 'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
             },
-            variety: {
-              type: 'string',
-              description: 'Filter by variety (exact match after trim)',
-            },
           },
         },
         response: {
           200: {
-            description:
-              'Paginated list of storage gate passes (or single match when gatePassNo is provided)',
+            description: 'Paginated list of storage gate passes',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -507,24 +263,6 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
               },
             },
           },
-          404: {
-            description:
-              'Storage gate pass not found (when gatePassNo is provided and no match exists)',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: {
-                    type: 'string',
-                    example: 'STORAGE_GATE_PASS_NOT_FOUND',
-                  },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
         },
       },
       preHandler: [authenticate],
@@ -536,318 +274,5 @@ export async function storageGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getStorageGatePassesByColdStorageHandler as never
-  );
-
-  // Get all storage gate passes for cold storage, grouped by manualGatePassNumber and date
-  fastify.get(
-    '/grouped',
-    {
-      schema: {
-        description:
-          "Get all storage gate passes for the authenticated store admin's cold storage, grouped by manualGatePassNumber and date",
-        tags: ['Storage Gate Pass'],
-        summary: 'Get storage gate passes for my cold storage (grouped)',
-        response: {
-          200: {
-            description:
-              'Storage gate passes grouped by manualGatePassNumber and date',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    manualGatePassNumber: {
-                      type: ['number', 'null'],
-                      description: 'Manual gate pass number (null if not set)',
-                    },
-                    date: {
-                      type: 'string',
-                      description: 'Date in YYYY-MM-DD format',
-                    },
-                    passes: {
-                      type: 'array',
-                      items: { type: 'object', additionalProperties: true },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          401: {
-            description: 'Unauthorized or missing cold storage context',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate],
-      config: {
-        rateLimit: {
-          max: 200,
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    getStorageGatePassesByColdStorageGroupedHandler as never
-  );
-
-  // Get storage gate passes for a specific farmer storage link (all results, no pagination)
-  fastify.get(
-    '/farmer-storage-link/:farmerStorageLinkId',
-    {
-      schema: {
-        description:
-          "Get all storage gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination).",
-        tags: ['Storage Gate Pass'],
-        summary: 'Get storage gate passes by farmer storage link',
-        params: {
-          type: 'object',
-          required: ['farmerStorageLinkId'],
-          properties: {
-            farmerStorageLinkId: {
-              type: 'string',
-              description: 'Farmer storage link ID',
-            },
-          },
-        },
-        response: {
-          200: {
-            description:
-              'List of all storage gate passes for the farmer storage link',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: {
-                type: 'object',
-                properties: {
-                  storageGatePasses: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      additionalProperties: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          401: {
-            description: 'Unauthorized or missing cold storage context',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          404: {
-            description:
-              'Farmer storage link not found or does not belong to your cold storage',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: {
-                    type: 'string',
-                    example: 'FARMER_STORAGE_LINK_NOT_FOUND',
-                  },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          400: {
-            description: 'Bad request - invalid farmer storage link ID',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate],
-      config: {
-        rateLimit: {
-          max: 200,
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    getStorageGatePassesByFarmerStorageLinkHandler as never
-  );
-
-  // Update storage gate pass (by id)
-  fastify.put(
-    '/:id',
-    {
-      schema: {
-        ...updateStorageGatePassSchema,
-        description:
-          'Update a storage gate pass by ID. Send only fields to update.',
-        tags: ['Storage Gate Pass'],
-        summary: 'Update storage gate pass',
-        params: {
-          type: 'object',
-          required: ['id'],
-          properties: {
-            id: { type: 'string', description: 'Storage gate pass ID' },
-          },
-        },
-        body: {
-          type: 'object',
-          properties: {
-            farmerStorageLinkId: {
-              type: 'string',
-              description: 'Farmer storage link ID (re-link this gate pass)',
-            },
-            gatePassNo: { type: 'number', description: 'Gate pass number' },
-            manualGatePassNumber: {
-              type: ['number', 'null'],
-              description:
-                'Manual gate pass number (omit to leave unchanged, send null to clear)',
-            },
-            date: {
-              type: 'string',
-              format: 'date-time',
-              description: 'Gate pass date',
-            },
-            storageCategory: {
-              type: 'string',
-              description: 'Storage category',
-            },
-            variety: { type: 'string', description: 'Variety' },
-            bagSizes: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: [
-                  'size',
-                  'bagType',
-                  'currentQuantity',
-                  'initialQuantity',
-                  'chamber',
-                  'floor',
-                  'row',
-                ],
-                properties: {
-                  size: { type: 'string', description: 'Bag size (e.g. 50kg)' },
-                  bagType: {
-                    type: 'string',
-                    enum: ['JUTE', 'LENO'],
-                    description: 'Bag type',
-                  },
-                  currentQuantity: {
-                    type: 'number',
-                    description: 'Current quantity in this bag slot',
-                  },
-                  initialQuantity: {
-                    type: 'number',
-                    description: 'Initial quantity in this bag slot',
-                  },
-                  chamber: { type: 'string', description: 'Chamber location' },
-                  floor: { type: 'string', description: 'Floor location' },
-                  row: { type: 'string', description: 'Row location' },
-                },
-              },
-              description:
-                'Bag details. Same shape as create payload for bagSizes.',
-            },
-            remarks: { type: 'string', description: 'Remarks' },
-            reason: {
-              type: 'string',
-              description: 'Audit reason for the change',
-            },
-          },
-          additionalProperties: true,
-        },
-        response: {
-          200: {
-            description: 'Storage gate pass updated successfully',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              data: { type: 'object' },
-              message: { type: 'string' },
-            },
-          },
-          400: {
-            description: 'Bad request',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          404: {
-            description: 'Storage gate pass not found',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-          409: {
-            description: 'Conflict - gate pass number already exists',
-            type: 'object',
-            properties: {
-              success: { type: 'boolean' },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string' },
-                  message: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-      },
-      preHandler: [authenticate], // Require authentication
-      config: {
-        rateLimit: {
-          max: 60, // 60 requests per minute
-          timeWindow: '1 minute',
-        },
-      },
-    },
-    updateStorageGatePassHandler as never
   );
 }

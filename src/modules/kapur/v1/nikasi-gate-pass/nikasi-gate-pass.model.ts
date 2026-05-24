@@ -14,8 +14,7 @@ interface INikasiOrderDetail {
 /** Snapshot of a grading gate pass at creation time (remaining quantities) */
 export interface INikasiGradingGatePassSnapshotBagSize {
   size: string;
-  currentQuantity: number;
-  initialQuantity: number;
+  quantity: number;
 }
 
 export interface INikasiGradingGatePassSnapshot {
@@ -87,8 +86,7 @@ const NikasiGradingGatePassSnapshotBagSizeSchema =
   new Schema<INikasiGradingGatePassSnapshotBagSize>(
     {
       size: { type: String, required: true, trim: true },
-      currentQuantity: { type: Number, required: true, min: 0 },
-      initialQuantity: { type: Number, required: true, min: 0 },
+      quantity: { type: Number, required: true, min: 0 },
     },
     { _id: false }
   );

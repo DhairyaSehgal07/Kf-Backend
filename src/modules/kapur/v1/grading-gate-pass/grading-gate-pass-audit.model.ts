@@ -4,17 +4,18 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
    INTERFACES
 ======================= */
 
+/** Snapshot of only the gate pass fields that changed in an edit */
+export type GradingGatePassAuditState = Record<string, unknown>;
+
 export interface IGradingGatePassAudit extends Document {
   gradingGatePassId: Types.ObjectId;
   editedById?: Types.ObjectId;
 
-  // What changed
-  field: string;
-  oldValue: any;
-  newValue: any;
+  /** Field values before the edit (only modified fields) */
+  previousState: GradingGatePassAuditState;
+  /** Field values after the edit (only modified fields) */
+  modifiedState: GradingGatePassAuditState;
 
-  // Metadata
-  reason?: string;
   ipAddress?: string;
   userAgent?: string;
 
@@ -40,22 +41,16 @@ const GradingGatePassAuditSchema = new Schema<IGradingGatePassAudit>(
       index: true,
     },
 
-    field: {
-      type: String,
+    previousState: {
+      type: Schema.Types.Mixed,
       required: true,
+      default: {},
     },
 
-    oldValue: {
+    modifiedState: {
       type: Schema.Types.Mixed,
-    },
-
-    newValue: {
-      type: Schema.Types.Mixed,
-    },
-
-    reason: {
-      type: String,
-      trim: true,
+      required: true,
+      default: {},
     },
 
     ipAddress: {
@@ -75,16 +70,8 @@ const GradingGatePassAuditSchema = new Schema<IGradingGatePassAudit>(
    INDEXES
 ======================= */
 
-// Audit trail for a specific grading gate pass (chronological)
 GradingGatePassAuditSchema.index({ gradingGatePassId: 1, createdAt: -1 });
-
-// All edits by a specific user
 GradingGatePassAuditSchema.index({ editedById: 1, createdAt: -1 });
-
-// Track edits by field
-GradingGatePassAuditSchema.index({ gradingGatePassId: 1, field: 1 });
-
-// Date range queries
 GradingGatePassAuditSchema.index({ createdAt: -1 });
 
 /* =======================

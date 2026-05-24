@@ -25,10 +25,7 @@ export interface OverviewResult {
   totalIncomingWeight: number;
   totalUngradedBags: number;
   totalUngradedWeight: number;
-  totalGradingBags: {
-    initialQuantity: number;
-    currentQuantity: number;
-  };
+  totalGradingBags: number;
   totalGradingWeight: number;
   totalBagsStored: number;
   totalBagsDispatched: number;
@@ -39,7 +36,7 @@ export interface OverviewResult {
  * Get analytics overview for a cold storage with optional date filters.
  * - totalIncomingBags: sum of bags received (IncomingGatePass.bagsReceived)
  * - totalIncomingWeight: sum of (gross - tare) - (bagsReceived * 0.7) per pass (net minus bardana/JUTE bag weight)
- * - totalGradingBags: sum of initial and current quantities from grading order details
+ * - totalGradingBags: sum of quantity from grading order details
  * - totalGradingWeight: sum over grading lines of (quantity * (weightPerBagKg - bagTypeWeight)), JUTE=0.7kg, LENO=0.06kg
  * - totalUngradedBags / totalUngradedWeight: incoming vouchers that have no grading voucher associated (same weight formula as incoming)
  * - totalBagsStored: sum of bagSizes[].initialQuantity across all storage gate passes
@@ -73,7 +70,7 @@ export async function getOverview(
         totalIncomingWeight: 0,
         totalUngradedBags: 0,
         totalUngradedWeight: 0,
-        totalGradingBags: { initialQuantity: 0, currentQuantity: 0 },
+        totalGradingBags: 0,
         totalGradingWeight: 0,
         totalBagsStored: 0,
         totalBagsDispatched: 0,
@@ -251,30 +248,26 @@ export async function getOverview(
     const totalUngradedBags = ungradedAgg?.totalUngradedBags ?? 0;
     const totalUngradedWeight = ungradedAgg?.totalUngradedWeight ?? 0;
 
-    // Grading: unwind orderDetails, sum initial/current quantities and weight per line
+    // Grading: unwind orderDetails, sum quantity and weight per line
     const gradingDocs = await GradingGatePass.find(matchGrading)
       .select('orderDetails')
       .lean();
 
-    let totalGradingInitial = 0;
-    let totalGradingCurrent = 0;
+    let totalGradingBags = 0;
     let totalGradingWeight = 0;
 
     for (const doc of gradingDocs) {
       const details = doc.orderDetails ?? [];
       for (const d of details) {
-        const initial = Number(d.initialQuantity) || 0;
-        const current = Number(d.currentQuantity) || 0;
-        totalGradingInitial += initial;
-        totalGradingCurrent += current;
+        const quantity = Number(d.quantity) || 0;
+        totalGradingBags += quantity;
 
         const weightPerBagKg = Number(d.weightPerBagKg) || 0;
         const bagType = (d.bagType as BagType) ?? BagType.JUTE;
         const bagTareKg =
           BAG_TYPE_WEIGHT_KG[bagType] ?? BAG_TYPE_WEIGHT_KG[BagType.JUTE];
-        // Grading weight = initialQuantity * (weightPerBagKg - bag type weight); JUTE=0.7kg, LENO=0.06kg
         const netWeightPerBag = Math.max(0, weightPerBagKg - bagTareKg);
-        totalGradingWeight += initial * netWeightPerBag;
+        totalGradingWeight += quantity * netWeightPerBag;
       }
     }
 
@@ -336,10 +329,7 @@ export async function getOverview(
         totalIncomingWeight,
         totalUngradedBags,
         totalUngradedWeight,
-        totalGradingBags: {
-          initialQuantity: totalGradingInitial,
-          currentQuantity: totalGradingCurrent,
-        },
+        totalGradingBags,
         totalGradingWeight,
         totalBagsStored,
         totalOutgoingBags,
@@ -353,10 +343,7 @@ export async function getOverview(
       totalIncomingWeight,
       totalUngradedBags,
       totalUngradedWeight,
-      totalGradingBags: {
-        initialQuantity: totalGradingInitial,
-        currentQuantity: totalGradingCurrent,
-      },
+      totalGradingBags,
       totalGradingWeight,
       totalBagsStored,
       totalBagsDispatched,
@@ -626,7 +613,7 @@ export interface SizeDistributionFromGradingResult {
 
 /**
  * Size-wise distribution (total bags per size) from grading gate passes, by variety.
- * Uses initialQuantity per orderDetail. Response chartData for Recharts.
+ * Uses quantity per orderDetail. Response chartData for Recharts.
  */
 export async function getSizeDistributionFromGrading(
   coldStorageId: string,
@@ -687,7 +674,7 @@ export async function getSizeDistributionFromGrading(
     {
       $group: {
         _id: { variety: '$variety', size: '$orderDetails.size' },
-        total: { $sum: '$orderDetails.initialQuantity' },
+        total: { $sum: '$orderDetails.quantity' },
       },
     },
     { $sort: { '_id.variety': 1, total: -1 } },
@@ -800,7 +787,7 @@ export async function getGradingDailyMonthlyTrend(
           dateStr: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
           createdBy: { $ifNull: ['$createdBy', null] },
         },
-        bags: { $sum: '$orderDetails.initialQuantity' },
+        bags: { $sum: '$orderDetails.quantity' },
       },
     },
     {
@@ -843,7 +830,7 @@ export async function getGradingDailyMonthlyTrend(
           monthStr: { $dateToString: { format: '%Y-%m', date: '$date' } },
           createdBy: { $ifNull: ['$createdBy', null] },
         },
-        bags: { $sum: '$orderDetails.initialQuantity' },
+        bags: { $sum: '$orderDetails.quantity' },
       },
     },
     {
@@ -911,7 +898,7 @@ export interface AreaWiseSizeDistributionFromGradingResult {
 
 /**
  * Area-wise size distribution from grading gate passes, by variety.
- * Area = farmer address. Uses initialQuantity per orderDetail.
+ * Area = farmer address. Uses quantity per orderDetail.
  */
 export async function getAreaWiseSizeDistributionFromGrading(
   coldStorageId: string,
@@ -994,7 +981,7 @@ export async function getAreaWiseSizeDistributionFromGrading(
           variety: '$variety',
           size: '$orderDetails.size',
         },
-        total: { $sum: '$orderDetails.initialQuantity' },
+        total: { $sum: '$orderDetails.quantity' },
       },
     },
     { $sort: { '_id.variety': 1, '_id.farmerStorageLinkId': 1, total: -1 } },
@@ -1054,7 +1041,7 @@ export interface FarmersStockByAreaResult {
 }
 
 /**
- * Farmers and stock (currentQuantity per variety/size) for a given area.
+ * Farmers and stock (quantity per variety/size) for a given area.
  * Area is matched against farmer address (case-insensitive substring).
  */
 export async function getFarmersStockByArea(
@@ -1128,7 +1115,7 @@ export async function getFarmersStockByArea(
         varietyMap.set(doc.variety, sizeMap);
       }
       const prev = sizeMap.get(od.size) ?? 0;
-      sizeMap.set(od.size, prev + od.currentQuantity);
+      sizeMap.set(od.size, prev + (Number(od.quantity) || 0));
     }
   }
 

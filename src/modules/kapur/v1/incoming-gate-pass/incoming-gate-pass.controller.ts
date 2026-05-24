@@ -2,14 +2,18 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createIncomingGatePass,
   getIncomingGatePassesByColdStorage,
+  getIncomingGatePassReport,
   getIncomingGatePassesByFarmerStorageLinkId,
   searchIncomingGatePassesByNumber,
   updateIncomingGatePass,
+  getIncomingGatePassAuditsByColdStorage,
 } from './incoming-gate-pass.service.js';
 import {
   CreateIncomingGatePassInput,
   GetIncomingGatePassesByFarmerStorageLinkParams,
   GetIncomingGatePassesByFarmerStorageLinkQuery,
+  GetIncomingGatePassReportQuery,
+  GetIncomingGatePassAuditsByColdStorageQuery,
   SearchIncomingGatePassInput,
   UpdateIncomingGatePassInput,
   UpdateIncomingGatePassParams,
@@ -224,6 +228,95 @@ export async function getIncomingGatePassesByColdStorageHandler(
 }
 
 /**
+ * Handler for retrieving all incoming gate passes for report export (no pagination).
+ * Supports optional dateFrom and dateTo filters (inclusive date range).
+ */
+export async function getIncomingGatePassReportHandler(
+  request: FastifyRequest<{
+    Querystring: GetIncomingGatePassReportQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo } = request.query;
+
+    const result = await getIncomingGatePassReport(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        incomingGatePasses: result.incomingGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getIncomingGatePassReportHandler');
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
  * Handler for searching incoming gate passes by gate pass number or manual gate pass number.
  */
 export async function searchIncomingGatePassHandler(
@@ -339,12 +432,12 @@ export async function getIncomingGatePassesByFarmerStorageLinkIdHandler(
     }
 
     const { farmerStorageLinkId } = request.params;
-    const { sortOrder, status } = request.query;
+    const { sortOrder } = request.query;
 
     const result = await getIncomingGatePassesByFarmerStorageLinkId(
       farmerStorageLinkId,
       coldStorageId,
-      { sortOrder, status },
+      { sortOrder },
       request.log
     );
 
@@ -442,11 +535,24 @@ export async function updateIncomingGatePassHandler(
       );
     }
 
+    const editedById = req.user?.id;
+
+    const ipAddress =
+      request.ip ||
+      request.headers['x-forwarded-for']?.toString() ||
+      request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+
     const incomingGatePass = await updateIncomingGatePass(
       request.params.id,
       coldStorageId,
       request.body,
-      request.log
+      request.log,
+      editedById,
+      {
+        ipAddress,
+        userAgent,
+      }
     );
 
     return reply.send({
@@ -481,6 +587,98 @@ export async function updateIncomingGatePassHandler(
     }
 
     if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    return reply.code(500).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving incoming gate pass audit records for current cold storage.
+ */
+export async function getIncomingGatePassAuditsByColdStorageHandler(
+  request: FastifyRequest<{
+    Querystring: GetIncomingGatePassAuditsByColdStorageQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? req.user.coldStorageId._id
+        : (req.user.coldStorageId as string);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const limit = request.query.limit ?? 10;
+    const page = request.query.page ?? 1;
+
+    const result = await getIncomingGatePassAuditsByColdStorage(
+      coldStorageId,
+      { limit, page },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        audits: result.audits,
+        pagination: result.pagination,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getIncomingGatePassAuditsByColdStorageHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
       return reply.code(error.statusCode).send({
         success: false,
         error: {

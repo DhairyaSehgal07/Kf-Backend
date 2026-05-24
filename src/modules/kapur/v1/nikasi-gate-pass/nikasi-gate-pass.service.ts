@@ -2,7 +2,6 @@ import mongoose, { ClientSession, Types } from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { NikasiGatePass } from './nikasi-gate-pass.model.js';
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
-import { AllocationStatus } from '../grading-gate-pass/grading-gate-pass.model.js';
 import type {
   CreateNikasiGatePassBody,
   CreateBulkNikasiGatePassBody,
@@ -168,7 +167,7 @@ async function fetchAndValidateGradingGatePassesForNikasi(
 
     const orderDetails = (
       gradingPass as {
-        orderDetails: Array<{ size: string; currentQuantity: number }>;
+        orderDetails: Array<{ size: string; quantity: number }>;
       }
     ).orderDetails;
     const detailBySize = new Map(
@@ -183,9 +182,9 @@ async function fetchAndValidateGradingGatePassesForNikasi(
           'SIZE_NOT_FOUND'
         );
       }
-      if (detail.currentQuantity < alloc.quantityToAllocate) {
+      if (detail.quantity < alloc.quantityToAllocate) {
         throw new ValidationError(
-          `Insufficient quantity for size "${alloc.size}" in grading gate pass ${item.gradingGatePassId}: available ${detail.currentQuantity}, requested ${alloc.quantityToAllocate}`,
+          `Insufficient quantity for size "${alloc.size}" in grading gate pass ${item.gradingGatePassId}: available ${detail.quantity}, requested ${alloc.quantityToAllocate}`,
           'INSUFFICIENT_STOCK'
         );
       }
@@ -213,7 +212,7 @@ function prepareBulkOperationsForNikasi(
 
   for (const item of validated) {
     const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
-      orderDetails: Array<{ size: string; currentQuantity: number }>;
+      orderDetails: Array<{ size: string; quantity: number }>;
     };
     if (!gp?.orderDetails) continue;
 
@@ -227,13 +226,13 @@ function prepareBulkOperationsForNikasi(
           filter: { _id: new Types.ObjectId(item.gradingGatePassId) },
           update: {
             $inc: {
-              'orderDetails.$[elem].currentQuantity': -alloc.quantityToAllocate,
+              'orderDetails.$[elem].quantity': -alloc.quantityToAllocate,
             },
           },
           arrayFilters: [
             {
               'elem.size': od.size,
-              'elem.currentQuantity': { $gte: alloc.quantityToAllocate },
+              'elem.quantity': { $gte: alloc.quantityToAllocate },
             },
           ],
         },
@@ -242,73 +241,6 @@ function prepareBulkOperationsForNikasi(
   }
 
   return bulkOps as mongoose.mongo.AnyBulkWriteOperation<IGradingGatePass>[];
-}
-
-/* =======================
-   ALLOCATION STATUS UPDATES
-======================= */
-
-function buildAllocationStatusUpdatesForNikasi(
-  validated: NikasiGradingPassWithFilteredAllocations[],
-  gradingPassMap: Map<string, IGradingGatePass>
-): Array<{
-  updateOne: {
-    filter: Record<string, unknown>;
-    update: Record<string, unknown>;
-  };
-}> {
-  const statusOps: Array<{
-    updateOne: {
-      filter: Record<string, unknown>;
-      update: Record<string, unknown>;
-    };
-  }> = [];
-
-  for (const item of validated) {
-    const gp = gradingPassMap.get(item.gradingGatePassId) as unknown as {
-      orderDetails: Array<{
-        size: string;
-        currentQuantity: number;
-        initialQuantity: number;
-      }>;
-    };
-    if (!gp?.orderDetails) continue;
-
-    const decrementsBySize = new Map<string, number>();
-    for (const alloc of item.allocations) {
-      const key = normalizeSize(alloc.size);
-      decrementsBySize.set(
-        key,
-        (decrementsBySize.get(key) ?? 0) + alloc.quantityToAllocate
-      );
-    }
-
-    let totalRemaining = 0;
-    let totalInitial = 0;
-    for (const od of gp.orderDetails) {
-      const dec = decrementsBySize.get(normalizeSize(od.size)) ?? 0;
-      totalRemaining += Math.max(0, od.currentQuantity - dec);
-      totalInitial += od.initialQuantity;
-    }
-
-    let newStatus: AllocationStatus;
-    if (totalRemaining === 0) {
-      newStatus = AllocationStatus.FULLY_ALLOCATED;
-    } else if (totalRemaining < totalInitial) {
-      newStatus = AllocationStatus.PARTIALLY_ALLOCATED;
-    } else {
-      newStatus = AllocationStatus.UNALLOCATED;
-    }
-
-    statusOps.push({
-      updateOne: {
-        filter: { _id: new Types.ObjectId(item.gradingGatePassId) },
-        update: { $set: { allocationStatus: newStatus } },
-      },
-    });
-  }
-
-  return statusOps;
 }
 
 /* =======================
@@ -326,7 +258,7 @@ function buildNikasiOrderDetails(
       _id: Types.ObjectId;
       orderDetails: Array<{
         size: string;
-        currentQuantity: number;
+        quantity: number;
       }>;
     };
     if (!gp?.orderDetails) continue;
@@ -338,10 +270,7 @@ function buildNikasiOrderDetails(
     for (const alloc of item.allocations) {
       const detail = detailBySize.get(normalizeSize(alloc.size));
       if (!detail) continue;
-      const remaining = Math.max(
-        0,
-        detail.currentQuantity - alloc.quantityToAllocate
-      );
+      const remaining = Math.max(0, detail.quantity - alloc.quantityToAllocate);
 
       orderDetails.push({
         size: detail.size,
@@ -371,8 +300,7 @@ function buildGradingGatePassSnapshotsForNikasi(
       gatePassNo: number;
       orderDetails: Array<{
         size: string;
-        currentQuantity: number;
-        initialQuantity: number;
+        quantity: number;
       }>;
     };
     if (!gp?.orderDetails) continue;
@@ -388,11 +316,10 @@ function buildGradingGatePassSnapshotsForNikasi(
 
     const incomingBagSizes = gp.orderDetails.map((od) => {
       const allocated = allocatedBySize.get(normalizeSize(od.size)) ?? 0;
-      const remaining = Math.max(0, od.currentQuantity - allocated);
+      const remaining = Math.max(0, od.quantity - allocated);
       return {
         size: od.size,
-        currentQuantity: remaining,
-        initialQuantity: od.initialQuantity,
+        quantity: remaining,
       };
     });
 
@@ -543,17 +470,6 @@ async function createOneNikasiGatePassWithSession(
     throw new ConflictError(
       `Expected ${bulkOps.length} updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
       'CONCURRENT_MODIFICATION'
-    );
-  }
-
-  const statusOps = buildAllocationStatusUpdatesForNikasi(
-    validated,
-    gradingPassMap
-  );
-  if (statusOps.length > 0) {
-    await GradingGatePass.bulkWrite(
-      statusOps as Parameters<typeof GradingGatePass.bulkWrite>[0],
-      { session }
     );
   }
 

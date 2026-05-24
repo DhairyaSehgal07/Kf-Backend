@@ -10,7 +10,6 @@ import { coldStorageRoutes } from './modules/kapur/v1/cold-storage/cold-storage.
 import { storeAdminRoutes } from './modules/kapur/v1/store-admin/store-admin.routes.js';
 import { farmerStorageLinkRoutes } from './modules/kapur/v1/farmer-storage-link/farmer-storage-link.routes.js';
 import { incomingGatePassRoutes } from './modules/kapur/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
-import { rentalStorageGatePassRoutes } from './modules/kapur/v1/rental-storage-gate-pass/rental-storage-gate-pass.routes.js';
 import { gradingGatePassRoutes } from './modules/kapur/v1/grading-gate-pass/grading-gate-pass.routes.js';
 import { storageGatePassRoutes } from './modules/kapur/v1/storage-gate-pass/storage-gate-pass.routes.js';
 import { nikasiGatePassRoutes } from './modules/kapur/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
@@ -105,11 +104,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register incoming gate pass routes
   await fastify.register(incomingGatePassRoutes, {
     prefix: '/api/v1/incoming-gate-pass',
-  });
-
-  // Register rental storage gate pass routes
-  await fastify.register(rentalStorageGatePassRoutes, {
-    prefix: '/api/v1/rental-storage-gate-pass',
   });
 
   // Register grading gate pass routes

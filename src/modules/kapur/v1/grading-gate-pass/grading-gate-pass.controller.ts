@@ -1,15 +1,23 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createGradingGatePass,
-  updateGradingGatePass,
   getGradingGatePassesByColdStorage,
-  getGradingGatePassesByFarmerStorageLink,
+  getGradingGatePassById,
+  searchGradingGatePassesByNumber,
+  linkIncomingGatePassToGradingGatePass,
+  delinkIncomingGatePassFromGradingGatePass,
+  updateGradingGatePass,
+  getGradingGatePassAuditsByColdStorage,
 } from './grading-gate-pass.service.js';
 import {
   CreateGradingGatePassInput,
-  UpdateGradingGatePassInput,
+  SearchGradingGatePassInput,
+  LinkDelinkIncomingGatePassParams,
+  LinkDelinkIncomingGatePassBody,
+  GetGradingGatePassByIdParams,
   UpdateGradingGatePassParams,
-  GetGradingGatePassesByFarmerStorageLinkParams,
+  UpdateGradingGatePassInput,
+  GetGradingGatePassAuditsByColdStorageQuery,
 } from './grading-gate-pass.schema.js';
 import {
   AppError,
@@ -19,6 +27,78 @@ import {
   UnauthorizedError,
 } from '../../../../utils/errors.js';
 import { AuthenticatedRequest } from '../../../../utils/auth.js';
+
+function getColdStorageIdFromRequest(request: FastifyRequest): string {
+  const req = request as AuthenticatedRequest;
+  const coldStorageId =
+    typeof req.user.coldStorageId === 'object' &&
+    req.user.coldStorageId !== null &&
+    '_id' in req.user.coldStorageId
+      ? req.user.coldStorageId._id
+      : (req.user.coldStorageId as string);
+
+  if (!coldStorageId) {
+    throw new UnauthorizedError(
+      'Cold storage not found in token',
+      'MISSING_COLD_STORAGE'
+    );
+  }
+
+  return coldStorageId as string;
+}
+
+function sendGradingGatePassError(
+  reply: FastifyReply,
+  error: unknown
+): FastifyReply {
+  if (error instanceof UnauthorizedError) {
+    return reply.code(error.statusCode).send({
+      success: false,
+      error: { code: error.code, message: error.message },
+    });
+  }
+
+  if (error instanceof ValidationError) {
+    return reply.code(error.statusCode).send({
+      success: false,
+      error: { code: error.code, message: error.message },
+    });
+  }
+
+  if (error instanceof NotFoundError) {
+    return reply.code(error.statusCode).send({
+      success: false,
+      error: { code: error.code, message: error.message },
+    });
+  }
+
+  if (error instanceof ConflictError) {
+    return reply.code(error.statusCode).send({
+      success: false,
+      error: { code: error.code, message: error.message },
+    });
+  }
+
+  if (error instanceof AppError) {
+    return reply.code(error.statusCode).send({
+      success: false,
+      error: { code: error.code, message: error.message },
+    });
+  }
+
+  return reply.code(500).send({
+    success: false,
+    error: {
+      code: 'INTERNAL_SERVER_ERROR',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred'
+          : 'An unexpected error occurred',
+    },
+  });
+}
 
 /**
  * Handler for creating a new grading gate pass
@@ -45,67 +125,43 @@ export async function createGradingGatePassHandler(
       { error, body: request.body },
       'Error in createGradingGatePassHandler'
     );
+    return sendGradingGatePassError(reply, error);
+  }
+}
 
-    if (error instanceof ConflictError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
+/**
+ * Handler for searching grading gate passes by gate pass number or manual gate pass number.
+ */
+export async function searchGradingGatePassHandler(
+  request: FastifyRequest<{ Body: SearchGradingGatePassInput }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const result = await searchGradingGatePassesByNumber(
+      coldStorageId,
+      request.body.number,
+      request.log
+    );
 
-    if (error instanceof ValidationError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof NotFoundError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    // Fallback for unexpected errors
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
+    return reply.send({
+      success: true,
+      data: {
+        gradingGatePasses: result.gradingGatePasses,
       },
     });
+  } catch (error) {
+    request.log.error(
+      { error, body: request.body },
+      'Error in searchGradingGatePassHandler'
+    );
+    return sendGradingGatePassError(reply, error);
   }
 }
 
 /**
  * Handler for retrieving grading gate passes for the authenticated user's cold storage.
- * Supports pagination (limit, page), sortOrder (asc | desc), and search by gatePassNo.
- * When gatePassNo is provided and no match exists, returns 404.
+ * Supports pagination (limit, page) and sortOrder (asc | desc).
  */
 export async function getGradingGatePassesByColdStorageHandler(
   request: FastifyRequest<{
@@ -113,37 +169,20 @@ export async function getGradingGatePassesByColdStorageHandler(
       limit?: number;
       page?: number;
       sortOrder?: 'asc' | 'desc';
-      gatePassNo?: number;
     };
   }>,
   reply: FastifyReply
 ) {
   try {
-    const req = request as AuthenticatedRequest;
-
-    const coldStorageId =
-      typeof req.user.coldStorageId === 'object' &&
-      req.user.coldStorageId !== null &&
-      '_id' in req.user.coldStorageId
-        ? req.user.coldStorageId._id
-        : (req.user.coldStorageId as string);
-
-    if (!coldStorageId) {
-      throw new UnauthorizedError(
-        'Cold storage not found in token',
-        'MISSING_COLD_STORAGE'
-      );
-    }
-
+    const coldStorageId = getColdStorageIdFromRequest(request);
     const query = request.query;
     const limit = query.limit ?? 10;
     const page = query.page ?? 1;
     const sortOrder = query.sortOrder ?? 'desc';
-    const gatePassNo = query.gatePassNo;
 
     const result = await getGradingGatePassesByColdStorage(
       coldStorageId,
-      { limit, page, sortOrder, gatePassNo },
+      { limit, page, sortOrder },
       request.log
     );
 
@@ -159,164 +198,40 @@ export async function getGradingGatePassesByColdStorageHandler(
       { error },
       'Error in getGradingGatePassesByColdStorageHandler'
     );
-
-    if (error instanceof UnauthorizedError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof NotFoundError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof ValidationError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
-      },
-    });
+    return sendGradingGatePassError(reply, error);
   }
 }
 
 /**
- * Handler for retrieving grading gate passes by farmer-storage-link.
- * Ensures the link belongs to the authenticated user's cold storage. Returns all results (no pagination).
+ * Handler for retrieving a single grading gate pass by ID.
  */
-export async function getGradingGatePassesByFarmerStorageLinkHandler(
-  request: FastifyRequest<{
-    Params: GetGradingGatePassesByFarmerStorageLinkParams;
-  }>,
+export async function getGradingGatePassByIdHandler(
+  request: FastifyRequest<{ Params: GetGradingGatePassByIdParams }>,
   reply: FastifyReply
 ) {
   try {
-    const req = request as AuthenticatedRequest;
-
-    const coldStorageId =
-      typeof req.user.coldStorageId === 'object' &&
-      req.user.coldStorageId !== null &&
-      '_id' in req.user.coldStorageId
-        ? req.user.coldStorageId._id
-        : (req.user.coldStorageId as string);
-
-    if (!coldStorageId) {
-      throw new UnauthorizedError(
-        'Cold storage not found in token',
-        'MISSING_COLD_STORAGE'
-      );
-    }
-
-    const gradingGatePasses = await getGradingGatePassesByFarmerStorageLink(
-      request.params.farmerStorageLinkId,
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const gradingGatePass = await getGradingGatePassById(
+      request.params.gradingGatePassId,
       coldStorageId,
       request.log
     );
 
     return reply.send({
       success: true,
-      data: {
-        gradingGatePasses,
-      },
+      data: gradingGatePass,
     });
   } catch (error) {
     request.log.error(
       { error, params: request.params },
-      'Error in getGradingGatePassesByFarmerStorageLinkHandler'
+      'Error in getGradingGatePassByIdHandler'
     );
-
-    if (error instanceof UnauthorizedError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof NotFoundError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof ValidationError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
-      },
-    });
+    return sendGradingGatePassError(reply, error);
   }
 }
 
 /**
- * Handler for updating a grading gate pass
+ * Handler for updating a grading gate pass (allowed fields only).
  */
 export async function updateGradingGatePassHandler(
   request: FastifyRequest<{
@@ -326,10 +241,10 @@ export async function updateGradingGatePassHandler(
   reply: FastifyReply
 ) {
   try {
-    const authenticatedRequest = request as AuthenticatedRequest;
-    const editedById = authenticatedRequest.user?.id;
+    const req = request as AuthenticatedRequest;
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const editedById = req.user?.id;
 
-    // Get request metadata for audit
     const ipAddress =
       request.ip ||
       request.headers['x-forwarded-for']?.toString() ||
@@ -337,14 +252,12 @@ export async function updateGradingGatePassHandler(
     const userAgent = request.headers['user-agent'];
 
     const gradingGatePass = await updateGradingGatePass(
-      request.params.id,
+      request.params.gradingGatePassId,
+      coldStorageId,
       request.body,
-      editedById,
       request.log,
-      {
-        ipAddress,
-        userAgent,
-      }
+      editedById,
+      { ipAddress, userAgent }
     );
 
     return reply.send({
@@ -357,59 +270,130 @@ export async function updateGradingGatePassHandler(
       { error, params: request.params, body: request.body },
       'Error in updateGradingGatePassHandler'
     );
+    return sendGradingGatePassError(reply, error);
+  }
+}
 
-    if (error instanceof NotFoundError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
+/**
+ * Handler for retrieving grading gate pass audit records for current cold storage.
+ */
+export async function getGradingGatePassAuditsByColdStorageHandler(
+  request: FastifyRequest<{
+    Querystring: GetGradingGatePassAuditsByColdStorageQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const limit = request.query.limit ?? 10;
+    const page = request.query.page ?? 1;
 
-    if (error instanceof ConflictError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
+    const result = await getGradingGatePassAuditsByColdStorage(
+      coldStorageId,
+      { limit, page },
+      request.log
+    );
 
-    if (error instanceof ValidationError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-    }
-
-    // Fallback for unexpected errors
-    return reply.code(500).send({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred'
-            : 'An unexpected error occurred',
+    return reply.send({
+      success: true,
+      data: {
+        audits: result.audits,
+        pagination: result.pagination,
       },
     });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getGradingGatePassAuditsByColdStorageHandler'
+    );
+    return sendGradingGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for linking an incoming gate pass to a grading gate pass.
+ */
+export async function linkIncomingGatePassHandler(
+  request: FastifyRequest<{
+    Params: LinkDelinkIncomingGatePassParams;
+    Body: LinkDelinkIncomingGatePassBody;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const editedById = req.user?.id;
+
+    const ipAddress =
+      request.ip ||
+      request.headers['x-forwarded-for']?.toString() ||
+      request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+
+    const gradingGatePass = await linkIncomingGatePassToGradingGatePass(
+      request.params.gradingGatePassId,
+      request.body.incomingGatePassId,
+      coldStorageId,
+      request.log,
+      editedById,
+      { ipAddress, userAgent }
+    );
+
+    return reply.send({
+      success: true,
+      data: gradingGatePass,
+      message: 'Incoming gate pass linked successfully',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params, body: request.body },
+      'Error in linkIncomingGatePassHandler'
+    );
+    return sendGradingGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for delinking an incoming gate pass from a grading gate pass.
+ */
+export async function delinkIncomingGatePassHandler(
+  request: FastifyRequest<{
+    Params: LinkDelinkIncomingGatePassParams;
+    Body: LinkDelinkIncomingGatePassBody;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const editedById = req.user?.id;
+
+    const ipAddress =
+      request.ip ||
+      request.headers['x-forwarded-for']?.toString() ||
+      request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+
+    const gradingGatePass = await delinkIncomingGatePassFromGradingGatePass(
+      request.params.gradingGatePassId,
+      request.body.incomingGatePassId,
+      coldStorageId,
+      request.log,
+      editedById,
+      { ipAddress, userAgent }
+    );
+
+    return reply.send({
+      success: true,
+      data: gradingGatePass,
+      message: 'Incoming gate pass delinked successfully',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params, body: request.body },
+      'Error in delinkIncomingGatePassHandler'
+    );
+    return sendGradingGatePassError(reply, error);
   }
 }

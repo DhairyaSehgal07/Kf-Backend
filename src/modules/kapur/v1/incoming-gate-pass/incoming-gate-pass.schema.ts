@@ -109,12 +109,6 @@ export const getIncomingGatePassesByFarmerStorageLinkSchema = z.object({
       })
       .optional()
       .default('desc'),
-    status: z
-      .enum(['graded', 'ungraded'], {
-        message:
-          'status must be "graded" or "ungraded" to filter by gate pass status',
-      })
-      .optional(),
   }),
 });
 
@@ -164,6 +158,32 @@ export const getIncomingGatePassesQuerySchema = z.object({
 
 export type GetIncomingGatePassesQuery = z.infer<
   typeof getIncomingGatePassesQuerySchema
+>['querystring'];
+
+/** Query schema for incoming gate pass report (date range only, no pagination) */
+export const getIncomingGatePassReportSchema = z.object({
+  querystring: z.object({
+    dateFrom: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateFrom must be an ISO date, e.g. 2026-03-01'
+      )
+      .optional(),
+    dateTo: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateTo must be an ISO date, e.g. 2026-03-07'
+      )
+      .optional(),
+  }),
+});
+
+export type GetIncomingGatePassReportQuery = z.infer<
+  typeof getIncomingGatePassReportSchema
 >['querystring'];
 
 export const updateIncomingGatePassSchema = z.object({
@@ -243,3 +263,25 @@ export type UpdateIncomingGatePassInput = z.infer<
 export type UpdateIncomingGatePassParams = z.infer<
   typeof updateIncomingGatePassSchema
 >['params'];
+
+export const getIncomingGatePassAuditsByColdStorageSchema = z.object({
+  querystring: z.object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, 'Limit must be at least 1')
+      .max(5000, 'Limit must not exceed 5000')
+      .optional()
+      .default(10),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1, 'Page must be at least 1')
+      .optional()
+      .default(1),
+  }),
+});
+
+export type GetIncomingGatePassAuditsByColdStorageQuery = z.infer<
+  typeof getIncomingGatePassAuditsByColdStorageSchema
+>['querystring'];

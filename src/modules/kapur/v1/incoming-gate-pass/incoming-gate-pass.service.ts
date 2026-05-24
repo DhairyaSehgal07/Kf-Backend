@@ -3,6 +3,10 @@ import {
   IncomingGatePass,
 } from './incoming-gate-pass.model.js';
 import {
+  IncomingGatePassAudit,
+  IncomingGatePassAuditState,
+} from './incoming-gate-pass-audit.model.js';
+import {
   CreateIncomingGatePassInput,
   UpdateIncomingGatePassInput,
 } from './incoming-gate-pass.schema.js';
@@ -17,6 +21,237 @@ import type { FastifyBaseLogger } from 'fastify';
 
 /** Safety cap for exact-number search results within a cold storage */
 const INCOMING_GATE_PASS_SEARCH_RESULT_LIMIT = 100;
+
+const INCOMING_GATE_PASS_EDITABLE_FIELDS = [
+  'manualGatePassNumber',
+  'truckNumber',
+  'date',
+  'farmerStorageLinkId',
+  'variety',
+  'category',
+  'stage',
+  'bagsReceived',
+  'weightSlip',
+  'remarks',
+] as const;
+
+function serializeAuditValue(value: unknown): unknown {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const serialized: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(
+      value as Record<string, unknown>
+    )) {
+      serialized[key] = serializeAuditValue(nestedValue);
+    }
+    return serialized;
+  }
+
+  return value;
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+
+  if (
+    a instanceof mongoose.Types.ObjectId &&
+    b instanceof mongoose.Types.ObjectId
+  ) {
+    return a.equals(b);
+  }
+
+  if (
+    typeof a === 'object' &&
+    a !== null &&
+    typeof b === 'object' &&
+    b !== null
+  ) {
+    return (
+      JSON.stringify(serializeAuditValue(a)) ===
+      JSON.stringify(serializeAuditValue(b))
+    );
+  }
+
+  return a === b;
+}
+
+function diffWeightSlip(
+  oldSlip: Record<string, unknown> | undefined,
+  newSlip: Record<string, unknown> | undefined
+): {
+  previous: IncomingGatePassAuditState;
+  modified: IncomingGatePassAuditState;
+} | null {
+  const keys = ['slipNumber', 'grossWeightKg', 'tareWeightKg'] as const;
+  const previous: IncomingGatePassAuditState = {};
+  const modified: IncomingGatePassAuditState = {};
+  let hasChanges = false;
+
+  for (const key of keys) {
+    const oldVal = oldSlip?.[key];
+    const newVal = newSlip?.[key];
+
+    if (newVal !== undefined && !valuesEqual(oldVal, newVal)) {
+      hasChanges = true;
+      if (oldVal !== undefined) {
+        previous[key] = serializeAuditValue(oldVal) as unknown;
+      }
+      modified[key] = serializeAuditValue(newVal) as unknown;
+    }
+  }
+
+  return hasChanges ? { previous, modified } : null;
+}
+
+function buildIncomingGatePassAuditDiff(
+  existing: Record<string, unknown>,
+  payload: UpdateIncomingGatePassInput
+): {
+  previousState: IncomingGatePassAuditState;
+  modifiedState: IncomingGatePassAuditState;
+} {
+  const previousState: IncomingGatePassAuditState = {};
+  const modifiedState: IncomingGatePassAuditState = {};
+
+  for (const field of INCOMING_GATE_PASS_EDITABLE_FIELDS) {
+    if (payload[field] === undefined) {
+      continue;
+    }
+
+    if (field === 'weightSlip') {
+      const weightSlipDiff = diffWeightSlip(
+        existing.weightSlip as Record<string, unknown> | undefined,
+        payload.weightSlip as Record<string, unknown> | undefined
+      );
+
+      if (weightSlipDiff) {
+        if (Object.keys(weightSlipDiff.previous).length > 0) {
+          previousState.weightSlip = weightSlipDiff.previous;
+        }
+        modifiedState.weightSlip = weightSlipDiff.modified;
+      }
+      continue;
+    }
+
+    const oldValue = existing[field];
+    let newValue: unknown = payload[field];
+
+    if (field === 'farmerStorageLinkId' && typeof newValue === 'string') {
+      newValue = new mongoose.Types.ObjectId(newValue);
+    }
+
+    if (!valuesEqual(oldValue, newValue)) {
+      if (oldValue !== undefined) {
+        previousState[field] = serializeAuditValue(oldValue) as unknown;
+      }
+      modifiedState[field] = serializeAuditValue(newValue) as unknown;
+    }
+  }
+
+  return { previousState, modifiedState };
+}
+
+function toObjectIdString(value: unknown): string | null {
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value === 'string' && mongoose.Types.ObjectId.isValid(value)) {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && '_id' in value) {
+    return toObjectIdString((value as { _id: unknown })._id);
+  }
+
+  return null;
+}
+
+function collectFarmerStorageLinkIdsFromAuditState(
+  state: IncomingGatePassAuditState | undefined,
+  linkIds: Set<string>
+): void {
+  const linkId = state?.farmerStorageLinkId;
+  const normalized = toObjectIdString(linkId);
+  if (normalized) {
+    linkIds.add(normalized);
+  }
+}
+
+async function enrichAuditRecordsForResponse(
+  audits: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  const linkIds = new Set<string>();
+
+  for (const audit of audits) {
+    collectFarmerStorageLinkIdsFromAuditState(
+      audit.previousState as IncomingGatePassAuditState | undefined,
+      linkIds
+    );
+    collectFarmerStorageLinkIdsFromAuditState(
+      audit.modifiedState as IncomingGatePassAuditState | undefined,
+      linkIds
+    );
+  }
+
+  const linkById = new Map<string, Record<string, unknown>>();
+
+  if (linkIds.size > 0) {
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const links = await FarmerStorageLink.find({
+      _id: {
+        $in: [...linkIds].map((id) => new mongoose.Types.ObjectId(id)),
+      },
+    })
+      .select('accountNumber farmerId')
+      .populate({ path: 'farmerId', select: 'name mobileNumber address' })
+      .lean();
+
+    for (const link of links) {
+      linkById.set(
+        (link._id as mongoose.Types.ObjectId).toString(),
+        link as Record<string, unknown>
+      );
+    }
+  }
+
+  return audits.map((audit) => {
+    const enrichState = (state: IncomingGatePassAuditState | undefined) => {
+      if (!state) {
+        return state;
+      }
+
+      const enriched = { ...state };
+      const linkId = toObjectIdString(enriched.farmerStorageLinkId);
+
+      if (linkId && linkById.has(linkId)) {
+        enriched.farmerStorageLinkId = linkById.get(linkId) as unknown;
+      }
+
+      return enriched;
+    };
+
+    return {
+      ...audit,
+      incomingGatePassId: toObjectIdString(audit.incomingGatePassId),
+      previousState: enrichState(
+        audit.previousState as IncomingGatePassAuditState | undefined
+      ),
+      modifiedState: enrichState(
+        audit.modifiedState as IncomingGatePassAuditState | undefined
+      ),
+    };
+  });
+}
 
 /**
  * Creates a new incoming gate pass
@@ -305,6 +540,119 @@ export async function getIncomingGatePassesByColdStorage(
   }
 }
 
+/** Options for getIncomingGatePassReport (date range filter, no pagination) */
+export interface GetIncomingGatePassReportOptions {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * Retrieves all incoming gate passes for a cold storage within an optional date range (no pagination).
+ */
+export async function getIncomingGatePassReport(
+  coldStorageId: string,
+  options: GetIncomingGatePassReportOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{ incomingGatePasses: Array<Record<string, unknown>> }> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const filter: Record<string, unknown> = {
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    };
+
+    if (options.dateFrom != null || options.dateTo != null) {
+      const dateConditions: Record<string, unknown> = {};
+      if (options.dateFrom != null) {
+        const from = new Date(options.dateFrom);
+        if (Number.isNaN(from.getTime())) {
+          throw new ValidationError(
+            'Invalid dateFrom format. Use ISO date, e.g. 2026-03-01',
+            'INVALID_DATE_FROM'
+          );
+        }
+        from.setUTCHours(0, 0, 0, 0);
+        dateConditions.$gte = from;
+      }
+      if (options.dateTo != null) {
+        const to = new Date(options.dateTo);
+        if (Number.isNaN(to.getTime())) {
+          throw new ValidationError(
+            'Invalid dateTo format. Use ISO date, e.g. 2026-03-07',
+            'INVALID_DATE_TO'
+          );
+        }
+        to.setUTCHours(23, 59, 59, 999);
+        dateConditions.$lte = to;
+      }
+      filter.date = dateConditions;
+    }
+
+    const incomingGatePasses = await IncomingGatePass.find(filter)
+      .populate({
+        path: 'farmerStorageLinkId',
+        populate: [
+          {
+            path: 'farmerId',
+            select: 'name mobileNumber address',
+          },
+          {
+            path: 'linkedById',
+            select: 'name',
+          },
+        ],
+      })
+      .populate('createdBy', 'name mobileNumber')
+      .sort({ gatePassNo: -1, date: -1 })
+      .lean();
+
+    logger?.info(
+      {
+        coldStorageId,
+        count: incomingGatePasses.length,
+        dateFrom: options.dateFrom,
+        dateTo: options.dateTo,
+      },
+      'Retrieved incoming gate pass report'
+    );
+
+    return {
+      incomingGatePasses: incomingGatePasses as unknown as Array<
+        Record<string, unknown>
+      >,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving incoming gate pass report'
+    );
+
+    throw new AppError(
+      'Failed to retrieve incoming gate pass report',
+      500,
+      'GET_INCOMING_GATE_PASS_REPORT_ERROR'
+    );
+  }
+}
+
 /**
  * Searches incoming gate passes within a cold storage by exact gate pass number.
  * Matches documents where `number` equals either `gatePassNo` or `manualGatePassNumber`.
@@ -392,7 +740,6 @@ export async function searchIncomingGatePassesByNumber(
 /** Options for getIncomingGatePassesByFarmerStorageLinkId */
 export interface GetIncomingGatePassesByFarmerStorageLinkIdOptions {
   sortOrder?: 'asc' | 'desc';
-  status?: 'graded' | 'ungraded';
 }
 
 /**
@@ -439,16 +786,9 @@ export async function getIncomingGatePassesByFarmerStorageLinkId(
     const sortOrder = options.sortOrder ?? 'desc';
     const sortDir = sortOrder === 'desc' ? -1 : 1;
 
-    const filter: Record<string, unknown> = {
+    const incomingGatePasses = await IncomingGatePass.find({
       farmerStorageLinkId: new mongoose.Types.ObjectId(farmerStorageLinkId),
-    };
-    if (options.status === 'graded') {
-      filter.status = GatePassStatus.GRADED;
-    } else if (options.status === 'ungraded') {
-      filter.status = GatePassStatus.NOT_GRADED;
-    }
-
-    const incomingGatePasses = await IncomingGatePass.find(filter)
+    })
       .populate({
         path: 'farmerStorageLinkId',
         populate: [
@@ -514,7 +854,9 @@ export async function updateIncomingGatePass(
   id: string,
   coldStorageId: string,
   payload: UpdateIncomingGatePassInput,
-  logger?: FastifyBaseLogger
+  logger?: FastifyBaseLogger,
+  editedById?: string,
+  requestMetadata?: { ipAddress?: string; userAgent?: string }
 ) {
   try {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -549,6 +891,12 @@ export async function updateIncomingGatePass(
         coldStorageId
       );
     }
+
+    const { previousState, modifiedState } = buildIncomingGatePassAuditDiff(
+      existing as unknown as Record<string, unknown>,
+      payload
+    );
+    const hasAuditChanges = Object.keys(modifiedState).length > 0;
 
     const updateData: Record<string, unknown> = { ...payload };
     const unsetFields: Record<string, 1> = {};
@@ -594,6 +942,28 @@ export async function updateIncomingGatePass(
       );
     }
 
+    if (hasAuditChanges) {
+      await IncomingGatePassAudit.create({
+        incomingGatePassId: existing._id,
+        editedById: editedById
+          ? new mongoose.Types.ObjectId(editedById)
+          : undefined,
+        previousState,
+        modifiedState,
+        ipAddress: requestMetadata?.ipAddress,
+        userAgent: requestMetadata?.userAgent,
+      });
+
+      logger?.info(
+        {
+          incomingGatePassId: id,
+          editedById,
+          fieldsChanged: Object.keys(modifiedState),
+        },
+        'Audit record created for incoming gate pass update'
+      );
+    }
+
     logger?.info(
       { incomingGatePassId: id, fieldsUpdated: Object.keys(payload) },
       'Incoming gate pass updated successfully'
@@ -631,6 +1001,99 @@ export async function updateIncomingGatePass(
       'Failed to update incoming gate pass',
       500,
       'UPDATE_INCOMING_GATE_PASS_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves incoming gate pass audit records for a cold storage.
+ */
+export async function getIncomingGatePassAuditsByColdStorage(
+  coldStorageId: string,
+  options: { limit?: number; page?: number } = {},
+  logger?: FastifyBaseLogger
+): Promise<{
+  audits: Array<Record<string, unknown>>;
+  pagination: IncomingGatePassesPagination;
+}> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const limit = Math.min(Math.max(options.limit ?? 10, 1), 5000);
+    const page = Math.max(options.page ?? 1, 1);
+
+    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+
+    const farmerStorageLinkIds = await FarmerStorageLink.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const emptyPagination = { page, limit, total: 0, totalPages: 0 };
+
+    if (farmerStorageLinkIds.length === 0) {
+      return { audits: [], pagination: emptyPagination };
+    }
+
+    const incomingGatePassIds = await IncomingGatePass.find({
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    if (incomingGatePassIds.length === 0) {
+      return { audits: [], pagination: emptyPagination };
+    }
+
+    const filter = {
+      incomingGatePassId: { $in: incomingGatePassIds },
+    };
+
+    const [total, audits] = await Promise.all([
+      IncomingGatePassAudit.countDocuments(filter),
+      IncomingGatePassAudit.find(filter)
+        .populate('editedById', 'name mobileNumber')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const enrichedAudits = await enrichAuditRecordsForResponse(
+      audits as unknown as Array<Record<string, unknown>>
+    );
+
+    logger?.info(
+      { coldStorageId, count: enrichedAudits.length, total, page, limit },
+      'Retrieved incoming gate pass audits by cold storage'
+    );
+
+    return {
+      audits: enrichedAudits,
+      pagination: { page, limit, total, totalPages },
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving incoming gate pass audits by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve incoming gate pass audits',
+      500,
+      'GET_INCOMING_GATE_PASS_AUDITS_ERROR'
     );
   }
 }

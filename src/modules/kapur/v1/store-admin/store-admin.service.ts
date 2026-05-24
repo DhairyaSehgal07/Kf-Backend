@@ -27,7 +27,6 @@ import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
-import { RentalStorageGatePass } from '../rental-storage-gate-pass/rental-storage-gate-pass.model.js';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -854,7 +853,11 @@ export async function getDaybook(
                     '$$value',
                     {
                       $sum: {
-                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
+                        $map: {
+                          input: { $ifNull: ['$$this.orderDetails', []] },
+                          as: 'od',
+                          in: '$$od.quantity',
+                        },
                       },
                     },
                   ],
@@ -1285,7 +1288,6 @@ export const VOUCHER_TYPES = [
   'storage-gate-pass',
   'nikasi-gate-pass',
   'outgoing-gate-pass',
-  'rental-storage-gate-pass',
   'rental-incoming-order',
 ] as const;
 
@@ -1314,13 +1316,6 @@ export async function getNextVoucherNumber(
 
   if (type === 'incoming-gate-pass') {
     const count = await IncomingGatePass.countDocuments(filter);
-    const next = count + 1;
-    logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
-    return next;
-  }
-
-  if (type === 'rental-storage-gate-pass') {
-    const count = await RentalStorageGatePass.countDocuments(filter);
     const next = count + 1;
     logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;

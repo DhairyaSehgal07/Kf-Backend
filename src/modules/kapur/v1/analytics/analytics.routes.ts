@@ -65,13 +65,7 @@ export async function analyticsRoutes(fastify: FastifyInstance) {
                   totalIncomingWeight: { type: 'number' },
                   totalUngradedBags: { type: 'number' },
                   totalUngradedWeight: { type: 'number' },
-                  totalGradingBags: {
-                    type: 'object',
-                    properties: {
-                      initialQuantity: { type: 'number' },
-                      currentQuantity: { type: 'number' },
-                    },
-                  },
+                  totalGradingBags: { type: 'number' },
                   totalGradingWeight: { type: 'number' },
                   totalBagsStored: { type: 'number' },
                   totalBagsDispatched: { type: 'number' },

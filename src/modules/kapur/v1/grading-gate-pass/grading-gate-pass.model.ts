@@ -13,12 +13,6 @@ export enum BagType {
   LENO = 'LENO',
 }
 
-export enum AllocationStatus {
-  UNALLOCATED = 'UNALLOCATED',
-  PARTIALLY_ALLOCATED = 'PARTIALLY_ALLOCATED',
-  FULLY_ALLOCATED = 'FULLY_ALLOCATED',
-}
-
 /* =======================
    INTERFACES
 ======================= */
@@ -26,8 +20,7 @@ export enum AllocationStatus {
 interface IOrderDetail {
   size: string;
   bagType: BagType;
-  currentQuantity: number;
-  initialQuantity: number;
+  quantity: number;
   weightPerBagKg: number;
 }
 
@@ -42,8 +35,6 @@ export interface IGradingGatePass extends Document {
   variety: string;
 
   orderDetails: IOrderDetail[];
-
-  allocationStatus: AllocationStatus;
 
   remarks?: string;
 
@@ -69,14 +60,7 @@ const OrderDetailSchema = new Schema<IOrderDetail>(
       required: true,
     },
 
-    currentQuantity: {
-      type: Number,
-      required: true,
-      min: 0,
-      set: oneDecimalFloat,
-    },
-
-    initialQuantity: {
+    quantity: {
       type: Number,
       required: true,
       min: 0,
@@ -110,10 +94,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       ref: 'IncomingGatePass',
       required: true,
       default: [],
-      validate: {
-        validator: (ids: Types.ObjectId[]) => ids.length > 0,
-        message: 'At least one incoming gate pass is required',
-      },
     },
 
     createdBy: {
@@ -151,12 +131,6 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
       },
     },
 
-    allocationStatus: {
-      type: String,
-      enum: Object.values(AllocationStatus),
-      default: AllocationStatus.UNALLOCATED,
-    },
-
     remarks: {
       type: String,
       trim: true,
@@ -179,9 +153,6 @@ GradingGatePassSchema.index({ incomingGatePassIds: 1, createdAt: -1 });
 
 // Gate passes by date for reporting
 GradingGatePassSchema.index({ date: -1 });
-
-// Allocation status queries
-GradingGatePassSchema.index({ allocationStatus: 1, date: -1 });
 
 // Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
 GradingGatePassSchema.index(

@@ -2,13 +2,17 @@ import { FastifyInstance } from 'fastify';
 import {
   createIncomingGatePassHandler,
   getIncomingGatePassesByColdStorageHandler,
+  getIncomingGatePassReportHandler,
   getIncomingGatePassesByFarmerStorageLinkIdHandler,
+  getIncomingGatePassAuditsByColdStorageHandler,
   searchIncomingGatePassHandler,
   updateIncomingGatePassHandler,
 } from './incoming-gate-pass.controller.js';
 import {
   createIncomingGatePassSchema,
   getIncomingGatePassesByFarmerStorageLinkSchema,
+  getIncomingGatePassAuditsByColdStorageSchema,
+  getIncomingGatePassReportSchema,
   searchIncomingGatePassSchema,
   updateIncomingGatePassSchema,
 } from './incoming-gate-pass.schema.js';
@@ -226,7 +230,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...getIncomingGatePassesByFarmerStorageLinkSchema,
         description:
-          "Get all incoming gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination). Optional filters: sortOrder (asc | desc, default desc), status (graded | ungraded).",
+          "Get all incoming gate passes for a specific farmer storage link (all statuses: GRADED and NOT_GRADED). The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination). Optional filter: sortOrder (asc | desc, default desc).",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate passes by farmer storage link',
         params: {
@@ -247,18 +251,12 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
               enum: ['asc', 'desc'],
               description: 'Sort by gate pass number (default desc)',
             },
-            status: {
-              type: 'string',
-              enum: ['graded', 'ungraded'],
-              description:
-                'Filter by grading: graded = status GRADED, ungraded = status NOT_GRADED.',
-            },
           },
         },
         response: {
           200: {
             description:
-              'List of all incoming gate passes for the farmer storage link',
+              'List of all incoming gate passes for the farmer storage link (graded and ungraded)',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -451,6 +449,181 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     getIncomingGatePassesByColdStorageHandler as never
   );
 
+  // Get all incoming gate passes for report (no pagination, optional date range)
+  fastify.get(
+    '/report',
+    {
+      schema: {
+        ...getIncomingGatePassReportSchema,
+        description:
+          "Get all incoming gate passes for the authenticated store admin's cold storage without pagination. Optional inclusive date range via dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07). Results are sorted by gate pass number descending.",
+        tags: ['Incoming Gate Pass'],
+        summary: 'Get incoming gate pass report',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range start (inclusive). ISO date string, e.g. 2026-03-01.',
+            },
+            dateTo: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'All incoming gate passes for the cold storage (no pagination)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  incomingGatePasses: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid date format',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassReportHandler as never
+  );
+
+  // Get incoming gate pass audit records for authenticated user's cold storage
+  fastify.get(
+    '/edits',
+    {
+      schema: {
+        ...getIncomingGatePassAuditsByColdStorageSchema,
+        description:
+          "Get audit records for all incoming gate pass edits in the authenticated store admin's cold storage. Supports pagination (limit default 10, page). Results are sorted by newest first. Each audit entry contains previousState and modifiedState with only the fields that changed.",
+        tags: ['Incoming Gate Pass'],
+        summary:
+          'Get incoming gate pass edit audit trail for current cold storage',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 10, max 5000)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Paginated audit records for incoming gate pass edits in current cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  audits: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassAuditsByColdStorageHandler as never
+  );
+
   // Update incoming gate pass (partial update; allowed fields only)
   fastify.put(
     '/:id',
@@ -458,7 +631,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...updateIncomingGatePassSchema,
         description:
-          'Update an incoming gate pass. Allowed fields: manualGatePassNumber, truckNumber, date, farmerStorageLinkId, variety, category, stage, bagsReceived, weightSlip (slipNumber, grossWeightKg, tareWeightKg), remarks. gatePassNo and status cannot be changed.',
+          'Update an incoming gate pass. Allowed fields: manualGatePassNumber, truckNumber, date, farmerStorageLinkId, variety, category, stage, bagsReceived, weightSlip (slipNumber, grossWeightKg, tareWeightKg), remarks. gatePassNo and status cannot be changed. Creates an audit record with previousState and modifiedState containing only the fields that changed.',
         tags: ['Incoming Gate Pass'],
         summary: 'Update incoming gate pass',
         body: {

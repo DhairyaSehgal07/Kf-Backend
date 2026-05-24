@@ -23,9 +23,7 @@ import { IncomingGatePassAudit } from '../modules/kapur/v1/incoming-gate-pass/in
 import { NikasiGatePass } from '../modules/kapur/v1/nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { OutgoingGatePass } from '../modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.model.js';
 import { Preferences } from '../modules/kapur/v1/preferences/preferences.model.js';
-import { RentalStorageGatePass } from '../modules/kapur/v1/rental-storage-gate-pass/rental-storage-gate-pass.model.js';
 import { RolePermission } from '../modules/kapur/v1/role-permission/role-permission.model.js';
-import { ShortageStock } from '../modules/kapur/v1/shortage-stock/shortage-stock.model.js';
 import { StorageGatePass } from '../modules/kapur/v1/storage-gate-pass/storage-gate-pass.model.js';
 import { EditHistory } from '../modules/kapur/v1/storage-gate-pass/edit-history.model.js';
 import { StoreAdmin } from '../modules/kapur/v1/store-admin/store-admin.model.js';
@@ -42,9 +40,7 @@ const MODELS = [
   NikasiGatePass,
   OutgoingGatePass,
   Preferences,
-  RentalStorageGatePass,
   RolePermission,
-  ShortageStock,
   StorageGatePass,
   EditHistory,
   StoreAdmin,
