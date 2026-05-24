@@ -1,123 +1,25 @@
 import { FastifyInstance } from 'fastify';
 import {
   createIncomingGatePassHandler,
-  updateIncomingGatePassHandler,
   getIncomingGatePassesByColdStorageHandler,
   getIncomingGatePassesByFarmerStorageLinkIdHandler,
+  searchIncomingGatePassHandler,
+  updateIncomingGatePassHandler,
 } from './incoming-gate-pass.controller.js';
 import {
   createIncomingGatePassSchema,
+  getIncomingGatePassesByFarmerStorageLinkSchema,
+  searchIncomingGatePassSchema,
   updateIncomingGatePassSchema,
 } from './incoming-gate-pass.schema.js';
-import { IncomingGatePassCategory } from './incoming-gate-pass.model.js';
+import {
+  GatePassStatus,
+  IncomingGatePassCategory,
+} from './incoming-gate-pass.model.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 const categoryEnumValues = Object.values(IncomingGatePassCategory);
-
-/** Shared options for PUT/PATCH update (same handler and validation). */
-const incomingGatePassUpdateRouteOptions = {
-  schema: {
-    ...updateIncomingGatePassSchema,
-    description: 'Update an incoming gate pass',
-    tags: ['Incoming Gate Pass'],
-    summary: 'Update incoming gate pass',
-    body: {
-      type: 'object',
-      properties: {
-        farmerStorageLinkId: { type: 'string' },
-        gatePassNo: { type: 'number' },
-        date: { type: 'string', format: 'date-time' },
-        variety: { type: 'string' },
-        category: {
-          type: 'string',
-          enum: categoryEnumValues,
-          description: 'Category of the gate pass',
-        },
-        truckNumber: { type: 'string' },
-        bagsReceived: { type: 'number' },
-        weightSlip: {
-          type: 'object',
-          properties: {
-            slipNumber: { type: 'string' },
-            grossWeightKg: { type: 'number' },
-            tareWeightKg: { type: 'number' },
-          },
-        },
-        status: {
-          type: 'string',
-          enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
-        },
-        gradingSummary: {
-          type: 'object',
-          properties: { totalGradedBags: { type: 'number' } },
-        },
-        stage: { type: 'string' },
-        remarks: { type: 'string' },
-        reason: { type: 'string' },
-      },
-    },
-    response: {
-      200: {
-        description: 'Incoming gate pass updated successfully',
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          data: { type: 'object' },
-          message: { type: 'string' },
-        },
-      },
-      400: {
-        description: 'Bad request',
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: {
-            type: 'object',
-            properties: {
-              code: { type: 'string' },
-              message: { type: 'string' },
-            },
-          },
-        },
-      },
-      404: {
-        description: 'Incoming gate pass not found',
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: {
-            type: 'object',
-            properties: {
-              code: { type: 'string' },
-              message: { type: 'string' },
-            },
-          },
-        },
-      },
-      409: {
-        description: 'Conflict - gate pass number already exists',
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: {
-            type: 'object',
-            properties: {
-              code: { type: 'string' },
-              message: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  },
-  preHandler: [authenticate],
-  config: {
-    rateLimit: {
-      max: 60,
-      timeWindow: '1 minute',
-    },
-  },
-};
+const statusEnumValues = Object.values(GatePassStatus);
 
 /**
  * Register incoming gate pass routes
@@ -167,16 +69,10 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
             },
             status: {
               type: 'string',
-              enum: ['OPEN', 'PARTIALLY_GRADED', 'FULLY_GRADED'],
-            },
-            gradingSummary: {
-              type: 'object',
-              properties: { totalGradedBags: { type: 'number' } },
+              enum: statusEnumValues,
             },
             stage: { type: 'string' },
             remarks: { type: 'string' },
-            aadharCardNumber: { type: 'string' },
-            panCardNumber: { type: 'string' },
           },
         },
         response: {
@@ -233,15 +129,207 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
           },
         },
       },
-      preHandler: [authenticate], // Require authentication
+      preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 60, // 60 requests per minute
+          max: 60,
           timeWindow: '1 minute',
         },
       },
     },
     createIncomingGatePassHandler as never
+  );
+
+  // Search incoming gate passes by gate pass number or manual gate pass number
+  fastify.post(
+    '/search',
+    {
+      schema: {
+        ...searchIncomingGatePassSchema,
+        description:
+          "Search incoming gate passes for the authenticated store admin's cold storage. Matches documents where the provided number equals either gatePassNo or manualGatePassNumber.",
+        tags: ['Incoming Gate Pass'],
+        summary: 'Search incoming gate passes by number',
+        body: {
+          type: 'object',
+          required: ['number'],
+          properties: {
+            number: {
+              type: 'number',
+              description:
+                'Gate pass number to search. Matches gatePassNo or manualGatePassNumber.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description: 'Matching incoming gate passes (may be empty)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  incomingGatePasses: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    searchIncomingGatePassHandler as never
+  );
+
+  // Get incoming gate passes for a specific farmer storage link (all results, no pagination)
+  fastify.get(
+    '/farmer-storage-link/:farmerStorageLinkId',
+    {
+      schema: {
+        ...getIncomingGatePassesByFarmerStorageLinkSchema,
+        description:
+          "Get all incoming gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination). Optional filters: sortOrder (asc | desc, default desc), status (graded | ungraded).",
+        tags: ['Incoming Gate Pass'],
+        summary: 'Get incoming gate passes by farmer storage link',
+        params: {
+          type: 'object',
+          required: ['farmerStorageLinkId'],
+          properties: {
+            farmerStorageLinkId: {
+              type: 'string',
+              description: 'Farmer storage link ID',
+            },
+          },
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            sortOrder: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort by gate pass number (default desc)',
+            },
+            status: {
+              type: 'string',
+              enum: ['graded', 'ungraded'],
+              description:
+                'Filter by grading: graded = status GRADED, ungraded = status NOT_GRADED.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'List of all incoming gate passes for the farmer storage link',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  incomingGatePasses: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description:
+              'Farmer storage link not found or does not belong to your cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: {
+                    type: 'string',
+                    example: 'FARMER_STORAGE_LINK_NOT_FOUND',
+                  },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid farmer storage link ID',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getIncomingGatePassesByFarmerStorageLinkIdHandler as never
   );
 
   // Get all incoming gate passes for authenticated user's cold storage (with pagination)
@@ -250,7 +338,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo, filter by grading (status=graded|ungraded), and date range (dateFrom, dateTo). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with gradingSummary.graded true, status=ungraded for false. Use dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07) for inclusive date range.",
+          "Get incoming gate passes for the authenticated store admin's cold storage. Supports pagination (limit default 10, page), sortOrder (asc | desc) by gate pass number (default desc), search by gatePassNo, filter by grading (status=graded|ungraded), and date range (dateFrom, dateTo). If gatePassNo is provided and no match exists, returns 404. Use status=graded for vouchers with status GRADED, status=ungraded for NOT_GRADED. Use dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07) for inclusive date range.",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate passes for my cold storage',
         querystring: {
@@ -275,7 +363,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
               type: 'string',
               enum: ['graded', 'ungraded'],
               description:
-                'Filter by grading: graded = gradingSummary.graded true, ungraded = false.',
+                'Filter by grading: graded = status GRADED, ungraded = status NOT_GRADED.',
             },
             dateFrom: {
               type: 'string',
@@ -303,19 +391,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
                 properties: {
                   incomingGatePasses: {
                     type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        gradingSummary: {
-                          type: 'object',
-                          properties: {
-                            totalGradedBags: { type: 'number' },
-                            graded: { type: 'boolean' },
-                          },
-                        },
-                      },
-                      additionalProperties: true,
-                    },
+                    items: { type: 'object', additionalProperties: true },
                   },
                   pagination: {
                     type: 'object',
@@ -375,57 +451,57 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
     getIncomingGatePassesByColdStorageHandler as never
   );
 
-  // Get incoming gate passes for a specific farmer storage link (all results, no pagination)
-  fastify.get(
-    '/farmer-storage-link/:farmerStorageLinkId',
+  // Update incoming gate pass (partial update; allowed fields only)
+  fastify.put(
+    '/:id',
     {
       schema: {
+        ...updateIncomingGatePassSchema,
         description:
-          "Get all incoming gate passes for a specific farmer storage link. The link must belong to the authenticated store admin's cold storage. Returns all results (no pagination).",
+          'Update an incoming gate pass. Allowed fields: manualGatePassNumber, truckNumber, date, farmerStorageLinkId, variety, category, stage, bagsReceived, weightSlip (slipNumber, grossWeightKg, tareWeightKg), remarks. gatePassNo and status cannot be changed.',
         tags: ['Incoming Gate Pass'],
-        summary: 'Get incoming gate passes by farmer storage link',
-        params: {
+        summary: 'Update incoming gate pass',
+        body: {
           type: 'object',
-          required: ['farmerStorageLinkId'],
           properties: {
-            farmerStorageLinkId: {
-              type: 'string',
-              description: 'Farmer storage link ID',
+            manualGatePassNumber: {
+              type: ['number', 'null'],
+              description:
+                'Manual gate pass number. Pass null to clear the value.',
             },
+            truckNumber: { type: 'string' },
+            date: { type: 'string', format: 'date-time' },
+            farmerStorageLinkId: { type: 'string' },
+            variety: { type: 'string' },
+            category: {
+              type: 'string',
+              enum: categoryEnumValues,
+            },
+            stage: { type: 'string' },
+            bagsReceived: { type: 'number' },
+            weightSlip: {
+              type: 'object',
+              properties: {
+                slipNumber: { type: 'string' },
+                grossWeightKg: { type: 'number' },
+                tareWeightKg: { type: 'number' },
+              },
+            },
+            remarks: { type: 'string' },
           },
         },
         response: {
           200: {
-            description:
-              'List of all incoming gate passes for the farmer storage link',
+            description: 'Incoming gate pass updated successfully',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
-              data: {
-                type: 'object',
-                properties: {
-                  incomingGatePasses: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        gradingSummary: {
-                          type: 'object',
-                          properties: {
-                            totalGradedBags: { type: 'number' },
-                            graded: { type: 'boolean' },
-                          },
-                        },
-                      },
-                      additionalProperties: true,
-                    },
-                  },
-                },
-              },
+              data: { type: 'object', additionalProperties: true },
+              message: { type: 'string' },
             },
           },
-          401: {
-            description: 'Unauthorized or missing cold storage context',
+          400: {
+            description: 'Bad request',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -439,18 +515,28 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
             },
           },
           404: {
-            description:
-              'Farmer storage link not found or does not belong to your cold storage',
+            description: 'Incoming gate pass or farmer storage link not found',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               error: {
                 type: 'object',
                 properties: {
-                  code: {
-                    type: 'string',
-                    example: 'FARMER_STORAGE_LINK_NOT_FOUND',
-                  },
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          409: {
+            description: 'Conflict - duplicate key',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
                   message: { type: 'string' },
                 },
               },
@@ -461,31 +547,9 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       preHandler: [authenticate],
       config: {
         rateLimit: {
-          max: 200,
+          max: 60,
           timeWindow: '1 minute',
         },
-      },
-    },
-    getIncomingGatePassesByFarmerStorageLinkIdHandler as never
-  );
-
-  // Update incoming gate pass
-  fastify.put(
-    '/:id',
-    incomingGatePassUpdateRouteOptions,
-    updateIncomingGatePassHandler as never
-  );
-
-  // Edit incoming gate pass (same behaviour as PUT; PATCH for partial updates)
-  fastify.patch(
-    '/:id',
-    {
-      ...incomingGatePassUpdateRouteOptions,
-      schema: {
-        ...incomingGatePassUpdateRouteOptions.schema,
-        description:
-          'Edit an incoming gate pass (partial update; same request body as PUT /:id)',
-        summary: 'Edit incoming gate pass',
       },
     },
     updateIncomingGatePassHandler as never

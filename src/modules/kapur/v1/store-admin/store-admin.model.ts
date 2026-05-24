@@ -7,6 +7,31 @@ export enum Role {
   Staff = 'Staff',
 }
 
+/** Cold storage summary populated on login */
+export type LoginColdStorageSummary = {
+  _id: string;
+  name: string;
+  address: string;
+  capacity: number;
+  imageUrl?: string;
+  isPaid: boolean;
+};
+
+/** Public store admin profile fields (login, before JWT is attached) */
+export type LoginStoreAdminProfile = {
+  _id: string;
+  coldStorageId: LoginColdStorageSummary;
+  name: string;
+  mobileNumber: string;
+  role: Role;
+  isVerified: boolean;
+};
+
+/** Full login response `data` payload */
+export type LoginStoreAdminResponse = LoginStoreAdminProfile & {
+  token: string;
+};
+
 export interface IStoreAdmin extends Document {
   coldStorageId: Types.ObjectId;
 

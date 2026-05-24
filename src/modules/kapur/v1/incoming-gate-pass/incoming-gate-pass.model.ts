@@ -5,9 +5,8 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
 ======================= */
 
 export enum GatePassStatus {
-  OPEN = 'OPEN',
-  PARTIALLY_GRADED = 'PARTIALLY_GRADED',
-  FULLY_GRADED = 'FULLY_GRADED',
+  GRADED = 'GRADED',
+  NOT_GRADED = 'NOT_GRADED',
 }
 
 export enum IncomingGatePassCategory {
@@ -29,11 +28,6 @@ interface IWeightSlip {
   tareWeightKg?: number;
 }
 
-interface IGradingSummary {
-  totalGradedBags: number;
-  graded: boolean;
-}
-
 export interface IIncomingGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
   createdBy?: Types.ObjectId;
@@ -51,7 +45,6 @@ export interface IIncomingGatePass extends Document {
   weightSlip?: IWeightSlip;
 
   status: GatePassStatus;
-  gradingSummary: IGradingSummary;
 
   stage?: string;
 
@@ -70,14 +63,6 @@ const WeightSlipSchema = new Schema<IWeightSlip>(
     slipNumber: String,
     grossWeightKg: Number,
     tareWeightKg: Number,
-  },
-  { _id: false }
-);
-
-const GradingSummarySchema = new Schema<IGradingSummary>(
-  {
-    totalGradedBags: { type: Number, default: 0 },
-    graded: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -145,12 +130,7 @@ const IncomingGatePassSchema = new Schema<IIncomingGatePass>(
     status: {
       type: String,
       enum: Object.values(GatePassStatus),
-      default: GatePassStatus.OPEN,
-    },
-
-    gradingSummary: {
-      type: GradingSummarySchema,
-      default: () => ({}),
+      default: GatePassStatus.NOT_GRADED,
     },
 
     stage: {
@@ -189,6 +169,12 @@ IncomingGatePassSchema.index({ status: 1, date: -1 });
 IncomingGatePassSchema.index(
   { farmerStorageLinkId: 1, gatePassNo: 1 },
   { unique: true }
+);
+
+// Search by manual gate pass number within a farmer storage link (sparse: field is optional)
+IncomingGatePassSchema.index(
+  { farmerStorageLinkId: 1, manualGatePassNumber: 1 },
+  { sparse: true }
 );
 
 /* =======================

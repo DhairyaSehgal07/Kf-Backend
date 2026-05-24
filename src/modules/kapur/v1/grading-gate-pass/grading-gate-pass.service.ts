@@ -1,6 +1,9 @@
 import { GradingGatePass } from './grading-gate-pass.model.js';
 import { GradingGatePassAudit } from './grading-gate-pass-audit.model.js';
-import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model.js';
+import {
+  GatePassStatus,
+  IncomingGatePass,
+} from '../incoming-gate-pass/incoming-gate-pass.model.js';
 import {
   CreateGradingGatePassInput,
   UpdateGradingGatePassInput,
@@ -149,7 +152,7 @@ export async function createGradingGatePass(
     // Mark each referenced incoming gate pass as graded
     await IncomingGatePass.updateMany(
       { _id: { $in: payload.incomingGatePassIds } },
-      { $set: { 'gradingSummary.graded': true } }
+      { $set: { status: GatePassStatus.GRADED } }
     );
 
     logger?.info(

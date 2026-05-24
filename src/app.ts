@@ -8,6 +8,7 @@ import { config } from 'dotenv';
 import { AppError } from './utils/errors.js';
 import { coldStorageRoutes } from './modules/kapur/v1/cold-storage/cold-storage.routes.js';
 import { storeAdminRoutes } from './modules/kapur/v1/store-admin/store-admin.routes.js';
+import { farmerStorageLinkRoutes } from './modules/kapur/v1/farmer-storage-link/farmer-storage-link.routes.js';
 import { incomingGatePassRoutes } from './modules/kapur/v1/incoming-gate-pass/incoming-gate-pass.routes.js';
 import { rentalStorageGatePassRoutes } from './modules/kapur/v1/rental-storage-gate-pass/rental-storage-gate-pass.routes.js';
 import { gradingGatePassRoutes } from './modules/kapur/v1/grading-gate-pass/grading-gate-pass.routes.js';
@@ -94,6 +95,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register store admin routes
   await fastify.register(storeAdminRoutes, {
     prefix: '/api/v1/store-admin',
+  });
+
+  // Register farmer storage link routes
+  await fastify.register(farmerStorageLinkRoutes, {
+    prefix: '/api/v1/farmer-storage-link',
   });
 
   // Register incoming gate pass routes
