@@ -1,12 +1,20 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createStorageGatePass,
+  getStorageGatePassAuditsByColdStorage,
   getPaginatedStorageGatePassesByColdStorage,
+  getStorageGatePassReport,
   searchStorageGatePassesByNumber,
+  updateStorageGatePass,
 } from './storage-gate-pass.service.js';
 import {
   createStorageGatePassSchema,
   CreateStorageGatePassInput,
+  GetStorageGatePassAuditsByColdStorageQuery,
+  GetStorageGatePassReportQuery,
+  updateStorageGatePassSchema,
+  UpdateStorageGatePassInput,
+  UpdateStorageGatePassParams,
 } from './storage-gate-pass.schema.js';
 import {
   AppError,
@@ -208,6 +216,131 @@ export async function searchStorageGatePassHandler(
     request.log.error(
       { error, body: request.body },
       'Error in searchStorageGatePassHandler'
+    );
+    return sendStorageGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for retrieving storage gate pass audit records for current cold storage.
+ */
+export async function getStorageGatePassAuditsByColdStorageHandler(
+  request: FastifyRequest<{
+    Querystring: GetStorageGatePassAuditsByColdStorageQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const limit = request.query.limit ?? 10;
+    const page = request.query.page ?? 1;
+
+    const result = await getStorageGatePassAuditsByColdStorage(
+      coldStorageId,
+      { limit, page },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        audits: result.audits,
+        pagination: result.pagination,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageGatePassAuditsByColdStorageHandler'
+    );
+    return sendStorageGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for retrieving all storage gate passes for report export (no pagination).
+ * Supports optional dateFrom and dateTo filters (inclusive date range).
+ */
+export async function getStorageGatePassReportHandler(
+  request: FastifyRequest<{
+    Querystring: GetStorageGatePassReportQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+
+    const result = await getStorageGatePassReport(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        storageGatePasses: result.storageGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getStorageGatePassReportHandler');
+    return sendStorageGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for updating a storage gate pass (allowed fields only).
+ */
+export async function updateStorageGatePassHandler(
+  request: FastifyRequest<{
+    Params: UpdateStorageGatePassParams;
+    Body: UpdateStorageGatePassInput;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const parsed = updateStorageGatePassSchema.safeParse({
+      params: request.params,
+      body: request.body,
+    });
+
+    if (!parsed.success) {
+      throw new ValidationError(
+        parsed.error.issues.map((issue) => issue.message).join(', '),
+        'VALIDATION_ERROR'
+      );
+    }
+
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const editedById = (request as AuthenticatedRequest).user?.id;
+    const ipAddress =
+      request.ip ||
+      request.headers['x-forwarded-for']?.toString() ||
+      request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+
+    const storageGatePass = await updateStorageGatePass(
+      parsed.data.params.id,
+      coldStorageId,
+      parsed.data.body,
+      request.log,
+      editedById,
+      {
+        ipAddress,
+        userAgent,
+      }
+    );
+
+    return reply.send({
+      success: true,
+      data: storageGatePass,
+      message: 'Storage gate pass updated successfully',
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params, body: request.body },
+      'Error in updateStorageGatePassHandler'
     );
     return sendStorageGatePassError(reply, error);
   }
