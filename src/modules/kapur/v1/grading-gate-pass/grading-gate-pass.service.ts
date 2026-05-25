@@ -9,6 +9,7 @@ import {
 } from '../incoming-gate-pass/incoming-gate-pass.model.js';
 import {
   CreateGradingGatePassInput,
+  GradingReport,
   UpdateGradingGatePassInput,
 } from './grading-gate-pass.schema.js';
 import {
@@ -17,6 +18,14 @@ import {
   ValidationError,
   AppError,
 } from '../../../../utils/errors.js';
+import {
+  calculateGradingNetWeightKg,
+  calculateIncomingNetWeightKg,
+  calculateWastageKg,
+  calculateWastagePercentage,
+  formatNumberMaxTwoDecimals,
+  type BagWeightType,
+} from '../../../../utils/calculations.js';
 import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 
@@ -513,6 +522,168 @@ export interface GradingGatePassesPagination {
   totalPages: number;
 }
 
+/** Options for getGradingGatePassReport (date range filter, no pagination) */
+export interface GetGradingGatePassReportOptions {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function formatReportDateTime(date: Date | string | undefined): string {
+  if (date == null) {
+    return '';
+  }
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toISOString();
+}
+
+type GradingGatePassReportLean = {
+  _id?: unknown;
+  farmerStorageLinkId?: {
+    _id?: unknown;
+    accountNumber?: number;
+    farmerId?: {
+      _id?: unknown;
+      name?: string;
+      address?: string;
+    } | null;
+  } | null;
+  incomingGatePassIds?: Array<{
+    _id?: unknown;
+    manualGatePassNumber?: number;
+    bagsReceived?: number;
+    stage?: string;
+    category?: string;
+    weightSlip?: {
+      grossWeightKg?: number;
+      tareWeightKg?: number;
+    };
+  }>;
+  createdBy?: {
+    _id?: unknown;
+    name?: string;
+  } | null;
+  gatePassNo: number;
+  manualGatePassNumber?: number;
+  date?: Date | string;
+  variety: string;
+  orderDetails?: Array<{
+    size: string;
+    bagType: BagWeightType;
+    quantity: number;
+    weightPerBagKg: number;
+  }>;
+  remarks?: string;
+};
+
+interface IncomingGatePassReportMapping {
+  report: GradingReport['incomingGatePassIds'][number];
+  netWeightKg: number | null;
+}
+
+function mapFarmerStorageLinkForReport(
+  link: GradingGatePassReportLean['farmerStorageLinkId']
+): GradingReport['farmerStorageLinkId'] {
+  const mappedLink: GradingReport['farmerStorageLinkId'] = {
+    _id: toObjectIdString(link?._id) ?? '',
+  };
+
+  if (link?.accountNumber != null) {
+    mappedLink.accountNumber = link.accountNumber;
+  }
+
+  if (link?.farmerId) {
+    mappedLink.farmerId = {
+      _id: toObjectIdString(link.farmerId._id) ?? '',
+      name: link.farmerId.name ?? '',
+      address: link.farmerId.address ?? '',
+    };
+  }
+
+  return mappedLink;
+}
+
+function mapIncomingGatePassForGradingReport(
+  incomingGatePass: NonNullable<
+    GradingGatePassReportLean['incomingGatePassIds']
+  >[number]
+): IncomingGatePassReportMapping {
+  const netWeightKg = calculateIncomingNetWeightKg({
+    bagsReceived: incomingGatePass.bagsReceived,
+    grossWeightKg: incomingGatePass.weightSlip?.grossWeightKg,
+    tareWeightKg: incomingGatePass.weightSlip?.tareWeightKg,
+  });
+
+  const report: GradingReport['incomingGatePassIds'][number] = {
+    _id: toObjectIdString(incomingGatePass._id) ?? '',
+    bagsReceived: incomingGatePass.bagsReceived ?? 0,
+    stage: incomingGatePass.stage ?? '',
+    category: incomingGatePass.category ?? '',
+    netWeightKg:
+      netWeightKg == null ? '' : formatNumberMaxTwoDecimals(netWeightKg),
+  };
+
+  if (incomingGatePass.manualGatePassNumber != null) {
+    report.manualGatePassNumber = incomingGatePass.manualGatePassNumber;
+  }
+
+  return { report, netWeightKg };
+}
+
+function mapGradingGatePassToReport(
+  pass: GradingGatePassReportLean
+): GradingReport {
+  const incomingGatePassMappings = (pass.incomingGatePassIds ?? []).map(
+    mapIncomingGatePassForGradingReport
+  );
+  const incomingNetWeightKg = incomingGatePassMappings.reduce(
+    (total, item) => total + (item.netWeightKg ?? 0),
+    0
+  );
+  const netWeightKg = calculateGradingNetWeightKg(pass.orderDetails ?? []);
+  const wastageKg = calculateWastageKg(incomingNetWeightKg, netWeightKg);
+  const wastagePercentage = calculateWastagePercentage(
+    wastageKg,
+    incomingNetWeightKg
+  );
+
+  const report: GradingReport = {
+    _id: toObjectIdString(pass._id) ?? '',
+    farmerStorageLinkId: mapFarmerStorageLinkForReport(
+      pass.farmerStorageLinkId
+    ),
+    incomingGatePassIds: incomingGatePassMappings.map((item) => item.report),
+    gatePassNo: pass.gatePassNo,
+    date: formatReportDateTime(pass.date),
+    variety: pass.variety,
+    orderDetails: pass.orderDetails ?? [],
+    incomingNetWeightKg: formatNumberMaxTwoDecimals(incomingNetWeightKg),
+    netWeightKg: formatNumberMaxTwoDecimals(netWeightKg),
+    wastageKg: formatNumberMaxTwoDecimals(wastageKg),
+    wastagePercentage:
+      wastagePercentage == null
+        ? ''
+        : formatNumberMaxTwoDecimals(wastagePercentage),
+  };
+
+  if (pass.createdBy) {
+    report.createdBy = {
+      _id: toObjectIdString(pass.createdBy._id) ?? '',
+      name: pass.createdBy.name ?? '',
+    };
+  }
+  if (pass.manualGatePassNumber != null) {
+    report.manualGatePassNumber = pass.manualGatePassNumber;
+  }
+  if (pass.remarks != null) {
+    report.remarks = pass.remarks;
+  }
+
+  return report;
+}
+
 /**
  * Retrieves grading gate passes for a cold storage with pagination.
  */
@@ -611,6 +782,104 @@ export async function getGradingGatePassesByColdStorage(
       'Failed to retrieve grading gate passes',
       500,
       'GET_GRADING_GATE_PASSES_ERROR'
+    );
+  }
+}
+
+/**
+ * Retrieves all grading gate passes for a cold storage within an optional date range (no pagination).
+ */
+export async function getGradingGatePassReport(
+  coldStorageId: string,
+  options: GetGradingGatePassReportOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{ gradingGatePasses: GradingReport[] }> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const farmerStorageLinkIds =
+      await getFarmerStorageLinkIdsForColdStorage(coldStorageId);
+
+    const filter: Record<string, unknown> = {
+      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    };
+
+    if (options.dateFrom != null || options.dateTo != null) {
+      const dateConditions: Record<string, unknown> = {};
+      if (options.dateFrom != null) {
+        const from = new Date(options.dateFrom);
+        if (Number.isNaN(from.getTime())) {
+          throw new ValidationError(
+            'Invalid dateFrom format. Use ISO date, e.g. 2026-03-01',
+            'INVALID_DATE_FROM'
+          );
+        }
+        from.setUTCHours(0, 0, 0, 0);
+        dateConditions.$gte = from;
+      }
+      if (options.dateTo != null) {
+        const to = new Date(options.dateTo);
+        if (Number.isNaN(to.getTime())) {
+          throw new ValidationError(
+            'Invalid dateTo format. Use ISO date, e.g. 2026-03-07',
+            'INVALID_DATE_TO'
+          );
+        }
+        to.setUTCHours(23, 59, 59, 999);
+        dateConditions.$lte = to;
+      }
+      filter.date = dateConditions;
+    }
+
+    const gradingGatePasses = await GradingGatePass.find(filter)
+      .populate({
+        path: 'farmerStorageLinkId',
+        select: 'accountNumber farmerId',
+        populate: { path: 'farmerId', select: 'name address' },
+      })
+      .populate({
+        path: 'incomingGatePassIds',
+        select:
+          '_id manualGatePassNumber bagsReceived stage category weightSlip',
+      })
+      .populate('createdBy', 'name')
+      .sort({ gatePassNo: -1, date: -1 })
+      .lean();
+
+    logger?.info(
+      {
+        coldStorageId,
+        count: gradingGatePasses.length,
+        dateFrom: options.dateFrom,
+        dateTo: options.dateTo,
+      },
+      'Retrieved grading gate pass report'
+    );
+
+    return {
+      gradingGatePasses: (
+        gradingGatePasses as unknown as GradingGatePassReportLean[]
+      ).map(mapGradingGatePassToReport),
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving grading gate pass report'
+    );
+
+    throw new AppError(
+      'Failed to retrieve grading gate pass report',
+      500,
+      'GET_GRADING_GATE_PASS_REPORT_ERROR'
     );
   }
 }

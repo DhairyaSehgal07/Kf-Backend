@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   createGradingGatePassHandler,
   getGradingGatePassesByColdStorageHandler,
+  getGradingGatePassReportHandler,
   getGradingGatePassByIdHandler,
   searchGradingGatePassHandler,
   linkIncomingGatePassHandler,
@@ -12,6 +13,7 @@ import {
 import {
   createGradingGatePassSchema,
   getGradingGatePassesByStoreSchema,
+  getGradingGatePassReportSchema,
   getGradingGatePassByIdSchema,
   searchGradingGatePassSchema,
   linkDelinkIncomingGatePassSchema,
@@ -473,6 +475,179 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     getGradingGatePassesByColdStorageHandler as never
+  );
+
+  // Get all grading gate passes for report (no pagination, optional date range)
+  fastify.get(
+    '/report',
+    {
+      schema: {
+        ...getGradingGatePassReportSchema,
+        description:
+          "Get grading gate passes for the authenticated store admin's cold storage without pagination, excluding createdAt, updatedAt, and __v. Populates farmerStorageLinkId and incomingGatePassIds. Includes incoming net weight, grading net weight, wastage, and wastage percentage. Optional inclusive date range via dateFrom and dateTo (ISO dates). Sorted by gate pass number descending.",
+        tags: ['Grading Gate Pass'],
+        summary: 'Get grading gate pass report',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range start (inclusive). ISO date string, e.g. 2026-03-01.',
+            },
+            dateTo: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Grading gate pass report rows for the cold storage (no pagination)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  gradingGatePasses: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        _id: { type: 'string' },
+                        farmerStorageLinkId: {
+                          type: 'object',
+                          properties: {
+                            _id: { type: 'string' },
+                            accountNumber: { type: 'number' },
+                            farmerId: {
+                              type: 'object',
+                              properties: {
+                                _id: { type: 'string' },
+                                name: { type: 'string' },
+                                address: { type: 'string' },
+                              },
+                            },
+                          },
+                        },
+                        incomingGatePassIds: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              _id: { type: 'string' },
+                              manualGatePassNumber: { type: 'number' },
+                              bagsReceived: { type: 'number' },
+                              stage: { type: 'string' },
+                              category: { type: 'string' },
+                              netWeightKg: {
+                                type: 'string',
+                                description:
+                                  'Incoming net weight: gross - tare - (bagsReceived × jute bag weight)',
+                              },
+                            },
+                          },
+                          description: 'Associated incoming gate passes',
+                        },
+                        createdBy: {
+                          type: 'object',
+                          properties: {
+                            _id: { type: 'string' },
+                            name: { type: 'string' },
+                          },
+                        },
+                        gatePassNo: { type: 'number' },
+                        manualGatePassNumber: { type: 'number' },
+                        date: {
+                          type: 'string',
+                          format: 'date-time',
+                          description: 'Gate pass date',
+                        },
+                        variety: { type: 'string' },
+                        orderDetails: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              size: { type: 'string' },
+                              bagType: { type: 'string' },
+                              quantity: { type: 'number' },
+                              weightPerBagKg: { type: 'number' },
+                            },
+                          },
+                        },
+                        incomingNetWeightKg: {
+                          type: 'string',
+                          description:
+                            'Sum of incoming net weights for associated incoming gate passes',
+                        },
+                        netWeightKg: {
+                          type: 'string',
+                          description:
+                            'Grading net weight: sum of quantity × (weightPerBagKg - bag weight)',
+                        },
+                        wastageKg: {
+                          type: 'string',
+                          description:
+                            'incomingNetWeightKg - netWeightKg; can be negative',
+                        },
+                        wastagePercentage: {
+                          type: 'string',
+                          description:
+                            '(wastageKg / incomingNetWeightKg) × 100; can be negative',
+                        },
+                        remarks: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid date format',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getGradingGatePassReportHandler as never
   );
 
   // Get grading gate pass audit records for authenticated user's cold storage

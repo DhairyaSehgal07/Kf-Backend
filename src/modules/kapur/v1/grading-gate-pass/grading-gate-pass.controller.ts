@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createGradingGatePass,
   getGradingGatePassesByColdStorage,
+  getGradingGatePassReport,
   getGradingGatePassById,
   searchGradingGatePassesByNumber,
   linkIncomingGatePassToGradingGatePass,
@@ -15,6 +16,7 @@ import {
   LinkDelinkIncomingGatePassParams,
   LinkDelinkIncomingGatePassBody,
   GetGradingGatePassByIdParams,
+  GetGradingGatePassReportQuery,
   UpdateGradingGatePassParams,
   UpdateGradingGatePassInput,
   GetGradingGatePassAuditsByColdStorageQuery,
@@ -198,6 +200,38 @@ export async function getGradingGatePassesByColdStorageHandler(
       { error },
       'Error in getGradingGatePassesByColdStorageHandler'
     );
+    return sendGradingGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for retrieving all grading gate passes for report export (no pagination).
+ * Supports optional dateFrom and dateTo filters (inclusive date range).
+ */
+export async function getGradingGatePassReportHandler(
+  request: FastifyRequest<{
+    Querystring: GetGradingGatePassReportQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+
+    const result = await getGradingGatePassReport(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        gradingGatePasses: result.gradingGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getGradingGatePassReportHandler');
     return sendGradingGatePassError(reply, error);
   }
 }

@@ -114,6 +114,81 @@ export type GetGradingGatePassesByStoreQuery = z.infer<
   typeof getGradingGatePassesByStoreSchema
 >['querystring'];
 
+/** Query schema for grading gate pass report (date range only, no pagination) */
+export const getGradingGatePassReportSchema = z.object({
+  querystring: z.object({
+    dateFrom: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateFrom must be an ISO date, e.g. 2026-03-01'
+      )
+      .optional(),
+    dateTo: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateTo must be an ISO date, e.g. 2026-03-07'
+      )
+      .optional(),
+  }),
+});
+
+export type GetGradingGatePassReportQuery = z.infer<
+  typeof getGradingGatePassReportSchema
+>['querystring'];
+
+export interface GradingReportOrderDetail {
+  size: string;
+  bagType: string;
+  quantity: number;
+  weightPerBagKg: number;
+}
+
+export interface GradingReportFarmerStorageLink {
+  _id: string;
+  accountNumber?: number;
+  farmerId?: {
+    _id: string;
+    name: string;
+    address: string;
+  };
+}
+
+export interface GradingReportIncomingGatePass {
+  _id: string;
+  manualGatePassNumber?: number;
+  bagsReceived: number;
+  stage: string;
+  category: string;
+  netWeightKg: string;
+}
+
+export interface GradingReportCreatedBy {
+  _id: string;
+  name: string;
+}
+
+/** Flat row shape for GET /grading-gate-pass/report */
+export interface GradingReport {
+  _id: string;
+  farmerStorageLinkId: GradingReportFarmerStorageLink;
+  incomingGatePassIds: GradingReportIncomingGatePass[];
+  createdBy?: GradingReportCreatedBy;
+  gatePassNo: number;
+  manualGatePassNumber?: number;
+  date: string;
+  variety: string;
+  orderDetails: GradingReportOrderDetail[];
+  incomingNetWeightKg: string;
+  netWeightKg: string;
+  wastageKg: string;
+  wastagePercentage: string;
+  remarks?: string;
+}
+
 const objectIdString = (label: string) =>
   z
     .string()
