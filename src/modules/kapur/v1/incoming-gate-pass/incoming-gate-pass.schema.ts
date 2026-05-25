@@ -186,6 +186,27 @@ export type GetIncomingGatePassReportQuery = z.infer<
   typeof getIncomingGatePassReportSchema
 >['querystring'];
 
+/** Flat row shape for GET /incoming-gate-pass/report */
+export interface IncomingReport {
+  name: string;
+  address: string;
+  manualGatePassNumber: string;
+  gatePassNo: string;
+  date: string;
+  variety: string;
+  stage: string;
+  truckNumber: string;
+  bags: string;
+  slipNumber: string;
+  grossWeightKg: string;
+  tareWeightKg: string;
+  bardanaWeightKg: string;
+  netWeightKg: string;
+  remarks: string;
+  status: string;
+  createdBy: string;
+}
+
 export const updateIncomingGatePassSchema = z.object({
   params: z.object({
     id: z

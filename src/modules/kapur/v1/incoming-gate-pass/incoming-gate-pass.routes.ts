@@ -456,7 +456,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...getIncomingGatePassReportSchema,
         description:
-          "Get all incoming gate passes for the authenticated store admin's cold storage without pagination. Optional inclusive date range via dateFrom and dateTo (ISO dates, e.g. 2026-03-01, 2026-03-07). Results are sorted by gate pass number descending.",
+          "Get incoming gate pass report rows for the authenticated store admin's cold storage without pagination. Each row includes farmer name/address, gate pass details, weight slip fields, bardana (bags × jute bag weight from constants), and net weight (gross − tare − bardana). Optional inclusive date range via dateFrom and dateTo (ISO dates). Sorted by gate pass number descending.",
         tags: ['Incoming Gate Pass'],
         summary: 'Get incoming gate pass report',
         querystring: {
@@ -479,7 +479,7 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
         response: {
           200: {
             description:
-              'All incoming gate passes for the cold storage (no pagination)',
+              'Incoming gate pass report rows for the cold storage (no pagination)',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -488,7 +488,50 @@ export async function incomingGatePassRoutes(fastify: FastifyInstance) {
                 properties: {
                   incomingGatePasses: {
                     type: 'array',
-                    items: { type: 'object', additionalProperties: true },
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: {
+                          type: 'string',
+                          description: 'Farmer name',
+                        },
+                        address: {
+                          type: 'string',
+                          description: 'Farmer address',
+                        },
+                        manualGatePassNumber: { type: 'string' },
+                        gatePassNo: { type: 'string' },
+                        date: {
+                          type: 'string',
+                          description: 'Gate pass date (YYYY-MM-DD)',
+                        },
+                        variety: { type: 'string' },
+                        stage: { type: 'string' },
+                        truckNumber: { type: 'string' },
+                        bags: {
+                          type: 'string',
+                          description: 'Bags received',
+                        },
+                        slipNumber: { type: 'string' },
+                        grossWeightKg: { type: 'string' },
+                        tareWeightKg: { type: 'string' },
+                        bardanaWeightKg: {
+                          type: 'string',
+                          description:
+                            'bags × jute bag weight (from constants)',
+                        },
+                        netWeightKg: {
+                          type: 'string',
+                          description: 'gross − tare − bardanaWeightKg',
+                        },
+                        remarks: { type: 'string' },
+                        status: { type: 'string' },
+                        createdBy: {
+                          type: 'string',
+                          description: 'Store admin name who created the pass',
+                        },
+                      },
+                    },
                   },
                 },
               },

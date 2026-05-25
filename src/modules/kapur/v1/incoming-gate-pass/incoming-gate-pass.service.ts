@@ -8,8 +8,10 @@ import {
 } from './incoming-gate-pass-audit.model.js';
 import {
   CreateIncomingGatePassInput,
+  IncomingReport,
   UpdateIncomingGatePassInput,
 } from './incoming-gate-pass.schema.js';
+import { JUTE_BAG_WEIGHT } from '../../../../config/constants.js';
 import {
   ConflictError,
   NotFoundError,
@@ -546,6 +548,91 @@ export interface GetIncomingGatePassReportOptions {
   dateTo?: string;
 }
 
+function toReportString(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+  return String(value);
+}
+
+function formatReportDate(date: Date | string | undefined): string {
+  if (date == null) {
+    return '';
+  }
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toISOString().slice(0, 10);
+}
+
+function formatReportNumber(value: number): string {
+  return parseFloat(Number(value).toFixed(2)).toString();
+}
+
+function formatReportNumberOptional(value: number | undefined | null): string {
+  if (value == null) {
+    return '';
+  }
+  return formatReportNumber(value);
+}
+
+type IncomingGatePassReportLean = {
+  gatePassNo?: number;
+  manualGatePassNumber?: number;
+  date?: Date | string;
+  variety?: string;
+  stage?: string;
+  truckNumber?: string;
+  bagsReceived?: number;
+  weightSlip?: {
+    slipNumber?: string;
+    grossWeightKg?: number;
+    tareWeightKg?: number;
+  };
+  remarks?: string;
+  status?: string;
+  createdBy?: { name?: string } | null;
+  farmerStorageLinkId?: {
+    farmerId?: { name?: string; address?: string } | null;
+  } | null;
+};
+
+function mapIncomingGatePassToReport(
+  pass: IncomingGatePassReportLean
+): IncomingReport {
+  const farmer = pass.farmerStorageLinkId?.farmerId;
+  const bagsReceived = pass.bagsReceived ?? 0;
+  const gross = pass.weightSlip?.grossWeightKg;
+  const tare = pass.weightSlip?.tareWeightKg;
+  const bardanaWeightKg = bagsReceived * JUTE_BAG_WEIGHT;
+
+  let netWeightKg = '';
+  if (gross != null && tare != null) {
+    netWeightKg = formatReportNumber(gross - tare - bardanaWeightKg);
+  }
+
+  return {
+    name: toReportString(farmer?.name),
+    address: toReportString(farmer?.address),
+    manualGatePassNumber: formatReportNumberOptional(pass.manualGatePassNumber),
+    gatePassNo: formatReportNumberOptional(pass.gatePassNo),
+    date: formatReportDate(pass.date),
+    variety: toReportString(pass.variety),
+    stage: toReportString(pass.stage),
+    truckNumber: toReportString(pass.truckNumber),
+    bags: formatReportNumberOptional(pass.bagsReceived),
+    slipNumber: toReportString(pass.weightSlip?.slipNumber),
+    grossWeightKg: formatReportNumberOptional(gross),
+    tareWeightKg: formatReportNumberOptional(tare),
+    bardanaWeightKg: formatReportNumber(bardanaWeightKg),
+    netWeightKg,
+    remarks: toReportString(pass.remarks),
+    status: toReportString(pass.status),
+    createdBy: toReportString(pass.createdBy?.name),
+  };
+}
+
 /**
  * Retrieves all incoming gate passes for a cold storage within an optional date range (no pagination).
  */
@@ -553,7 +640,7 @@ export async function getIncomingGatePassReport(
   coldStorageId: string,
   options: GetIncomingGatePassReportOptions = {},
   logger?: FastifyBaseLogger
-): Promise<{ incomingGatePasses: Array<Record<string, unknown>> }> {
+): Promise<{ incomingGatePasses: IncomingReport[] }> {
   try {
     if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
       throw new ValidationError(
@@ -630,10 +717,12 @@ export async function getIncomingGatePassReport(
       'Retrieved incoming gate pass report'
     );
 
+    const reportRows = (
+      incomingGatePasses as unknown as IncomingGatePassReportLean[]
+    ).map(mapIncomingGatePassToReport);
+
     return {
-      incomingGatePasses: incomingGatePasses as unknown as Array<
-        Record<string, unknown>
-      >,
+      incomingGatePasses: reportRows,
     };
   } catch (error) {
     if (error instanceof ValidationError) {
