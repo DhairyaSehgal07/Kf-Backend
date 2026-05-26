@@ -2,18 +2,13 @@ import mongoose from 'mongoose';
 import type { FastifyBaseLogger } from 'fastify';
 import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model.js';
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
-import { BagType } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { ValidationError, AppError } from '../../../../utils/errors.js';
-
-/** Bag type tare weight in kg (weight of empty bag) */
-const BAG_TYPE_WEIGHT_KG: Record<BagType, number> = {
-  [BagType.JUTE]: 0.7,
-  [BagType.LENO]: 0.06,
-};
+import { calculateGradingNetWeightKg } from '../../../../utils/calculations.js';
+import { JUTE_BAG_WEIGHT } from '../../../../config/constants.js';
 
 export interface OverviewDateFilters {
   dateFrom?: string; // ISO date YYYY-MM-DD, start of day
@@ -35,9 +30,9 @@ export interface OverviewResult {
 /**
  * Get analytics overview for a cold storage with optional date filters.
  * - totalIncomingBags: sum of bags received (IncomingGatePass.bagsReceived)
- * - totalIncomingWeight: sum of (gross - tare) - (bagsReceived * 0.7) per pass (net minus bardana/JUTE bag weight)
+ * - totalIncomingWeight: sum of (gross - tare) - (bagsReceived * JUTE_BAG_WEIGHT) per pass (net minus bardana/JUTE bag weight)
  * - totalGradingBags: sum of quantity from grading order details
- * - totalGradingWeight: sum over grading lines of (quantity * (weightPerBagKg - bagTypeWeight)), JUTE=0.7kg, LENO=0.06kg
+ * - totalGradingWeight: sum over grading lines of (quantity * (weightPerBagKg - bagTypeWeight)), using bag weights from constants
  * - totalUngradedBags / totalUngradedWeight: incoming vouchers that have no grading voucher associated (same weight formula as incoming)
  * - totalBagsStored: sum of bagSizes[].initialQuantity across all storage gate passes
  * - totalBagsDispatched: sum of orderDetails[].quantityIssued across nikasi (dispatch) gate passes
@@ -172,7 +167,7 @@ export async function getOverview(
                         { $ifNull: ['$weightSlip.tareWeightKg', 0] },
                       ],
                     },
-                    { $multiply: ['$bagsReceived', 0.7] },
+                    { $multiply: ['$bagsReceived', JUTE_BAG_WEIGHT] },
                   ],
                 },
                 else: 0,
@@ -228,7 +223,7 @@ export async function getOverview(
                         { $ifNull: ['$weightSlip.tareWeightKg', 0] },
                       ],
                     },
-                    { $multiply: ['$bagsReceived', 0.7] },
+                    { $multiply: ['$bagsReceived', JUTE_BAG_WEIGHT] },
                   ],
                 },
                 else: 0,
@@ -258,16 +253,10 @@ export async function getOverview(
 
     for (const doc of gradingDocs) {
       const details = doc.orderDetails ?? [];
+      totalGradingWeight += calculateGradingNetWeightKg(details);
       for (const d of details) {
         const quantity = Number(d.quantity) || 0;
         totalGradingBags += quantity;
-
-        const weightPerBagKg = Number(d.weightPerBagKg) || 0;
-        const bagType = (d.bagType as BagType) ?? BagType.JUTE;
-        const bagTareKg =
-          BAG_TYPE_WEIGHT_KG[bagType] ?? BAG_TYPE_WEIGHT_KG[BagType.JUTE];
-        const netWeightPerBag = Math.max(0, weightPerBagKg - bagTareKg);
-        totalGradingWeight += quantity * netWeightPerBag;
       }
     }
 
