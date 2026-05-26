@@ -26,7 +26,7 @@ interface IOrderDetail {
 
 export interface IGradingGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
-  incomingGatePassIds: Types.ObjectId[];
+  incomingGatePassIds?: Types.ObjectId[] | null;
   createdBy?: Types.ObjectId;
 
   gatePassNo: number;
@@ -92,8 +92,8 @@ const GradingGatePassSchema = new Schema<IGradingGatePass>(
     incomingGatePassIds: {
       type: [Schema.Types.ObjectId],
       ref: 'IncomingGatePass',
-      required: true,
-      default: [],
+      required: false,
+      default: null,
     },
 
     createdBy: {

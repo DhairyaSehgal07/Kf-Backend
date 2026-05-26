@@ -307,19 +307,18 @@ export async function createGradingGatePass(
   createdBy?: string
 ) {
   try {
+    const incomingGatePassIds = payload.incomingGatePassIds ?? [];
     const incomingGatePasses = await IncomingGatePass.find({
-      _id: { $in: payload.incomingGatePassIds },
+      _id: { $in: incomingGatePassIds },
     }).lean();
 
-    if (incomingGatePasses.length !== payload.incomingGatePassIds.length) {
+    if (incomingGatePasses.length !== incomingGatePassIds.length) {
       const foundIds = new Set(
         incomingGatePasses.map((p) =>
           (p as { _id: mongoose.Types.ObjectId })._id.toString()
         )
       );
-      const missing = payload.incomingGatePassIds.filter(
-        (id) => !foundIds.has(id)
-      );
+      const missing = incomingGatePassIds.filter((id) => !foundIds.has(id));
       logger?.warn(
         { missingIncomingGatePassIds: missing },
         'Attempt to create grading gate pass for non-existent incoming gate pass(s)'
@@ -357,8 +356,9 @@ export async function createGradingGatePass(
       )
     );
     if (
-      farmerStorageLinkIds.size !== 1 ||
-      !farmerStorageLinkIds.has(payload.farmerStorageLinkId)
+      incomingGatePassIds.length > 0 &&
+      (farmerStorageLinkIds.size !== 1 ||
+        !farmerStorageLinkIds.has(payload.farmerStorageLinkId))
     ) {
       logger?.warn(
         {
@@ -430,33 +430,36 @@ export async function createGradingGatePass(
       farmerStorageLinkId: new mongoose.Types.ObjectId(
         payload.farmerStorageLinkId
       ),
-      incomingGatePassIds: payload.incomingGatePassIds.map(
-        (id) => new mongoose.Types.ObjectId(id)
-      ),
+      incomingGatePassIds:
+        incomingGatePassIds.length > 0
+          ? incomingGatePassIds.map((id) => new mongoose.Types.ObjectId(id))
+          : null,
       ...(createdById && { createdBy: createdById }),
     });
 
-    const updateResult = await IncomingGatePass.updateMany(
-      {
-        _id: { $in: payload.incomingGatePassIds },
-        status: GatePassStatus.NOT_GRADED,
-      },
-      { $set: { status: GatePassStatus.GRADED } }
-    );
-
-    if (updateResult.matchedCount !== payload.incomingGatePassIds.length) {
-      await GradingGatePass.findByIdAndDelete(gradingGatePass._id);
-      logger?.warn(
+    if (incomingGatePassIds.length > 0) {
+      const updateResult = await IncomingGatePass.updateMany(
         {
-          incomingGatePassIds: payload.incomingGatePassIds,
-          matchedCount: updateResult.matchedCount,
+          _id: { $in: incomingGatePassIds },
+          status: GatePassStatus.NOT_GRADED,
         },
-        'Incoming gate pass status changed during grading gate pass creation'
+        { $set: { status: GatePassStatus.GRADED } }
       );
-      throw new ConflictError(
-        'One or more incoming gate passes are already graded. Each incoming gate pass can only be graded once.',
-        'INCOMING_GATE_PASS_ALREADY_GRADED'
-      );
+
+      if (updateResult.matchedCount !== incomingGatePassIds.length) {
+        await GradingGatePass.findByIdAndDelete(gradingGatePass._id);
+        logger?.warn(
+          {
+            incomingGatePassIds,
+            matchedCount: updateResult.matchedCount,
+          },
+          'Incoming gate pass status changed during grading gate pass creation'
+        );
+        throw new ConflictError(
+          'One or more incoming gate passes are already graded. Each incoming gate pass can only be graded once.',
+          'INCOMING_GATE_PASS_ALREADY_GRADED'
+        );
+      }
     }
 
     logger?.info(
@@ -1362,6 +1365,13 @@ export async function linkIncomingGatePassToGradingGatePass(
       throw new ConflictError(
         'Incoming gate pass is already linked to another grading gate pass',
         'INCOMING_GATE_PASS_ALREADY_GRADED'
+      );
+    }
+
+    if (!Array.isArray(gradingGatePass.incomingGatePassIds)) {
+      await GradingGatePass.updateOne(
+        { _id: gradingGatePass._id },
+        { $set: { incomingGatePassIds: [] } }
       );
     }
 

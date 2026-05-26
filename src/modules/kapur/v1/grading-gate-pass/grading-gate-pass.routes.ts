@@ -58,14 +58,13 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...createGradingGatePassSchema,
         description:
-          'Create a new grading gate pass. Accepts one or more incoming gate pass IDs in `incomingGatePassIds` (array). Each order detail has a single `quantity` (bags per size). Referenced incoming gate passes must have status NOT_GRADED; they are updated to GRADED after creation. Returns 409 if any incoming gate pass is already graded.',
+          'Create a new grading gate pass. Accepts zero or more incoming gate pass IDs in `incomingGatePassIds` (array or null). Each order detail has a single `quantity` (bags per size). Referenced incoming gate passes must have status NOT_GRADED; they are updated to GRADED after creation. Returns 409 if any incoming gate pass is already graded.',
         tags: ['Grading Gate Pass'],
         summary: 'Create grading gate pass',
         body: {
           type: 'object',
           required: [
             'farmerStorageLinkId',
-            'incomingGatePassIds',
             'gatePassNo',
             'date',
             'variety',
@@ -77,11 +76,15 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
               description: 'Farmer storage link ID',
             },
             incomingGatePassIds: {
-              type: 'array',
-              items: { type: 'string' },
-              minItems: 1,
+              anyOf: [
+                {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                { type: 'null' },
+              ],
               description:
-                'Incoming gate pass IDs to grade (must share the same farmer storage link)',
+                'Incoming gate pass IDs to grade. Omit, pass null, or pass an empty array when no incoming gate pass is linked yet.',
             },
             gatePassNo: {
               type: 'number',

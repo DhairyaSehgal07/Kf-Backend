@@ -247,7 +247,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                             type: 'object',
                             additionalProperties: true,
                             description:
-                              'Each item includes manualGatePassNumber when set',
+                              'Each item includes manualGatePassNumber, generation, and stage when set',
                           },
                         },
                         nikasiPasses: {

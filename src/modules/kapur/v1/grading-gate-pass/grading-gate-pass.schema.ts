@@ -33,7 +33,9 @@ export const createGradingGatePassSchema = z.object({
             'Invalid incoming gate pass ID format'
           )
       )
-      .min(1, 'At least one incoming gate pass ID is required'),
+      .nullable()
+      .optional()
+      .transform((ids) => ids ?? []),
 
     gatePassNo: z.coerce
       .number()

@@ -26,6 +26,7 @@ const STORAGE_GATE_PASS_EDITABLE_FIELDS = [
   'farmerStorageLinkId',
   'variety',
   'storageCategory',
+  'stage',
   'bagSizes',
   'remarks',
 ] as const;
@@ -164,6 +165,7 @@ type StorageGatePassReportLean = {
   date?: Date | string;
   variety: string;
   storageCategory: string;
+  stage?: string;
   bagSizes?: Array<{
     size: string;
     currentQuantity: number;
@@ -219,11 +221,162 @@ function mapStorageGatePassToReport(
     report.manualGatePassNumber = pass.manualGatePassNumber;
   }
 
+  if (pass.stage != null) {
+    report.stage = pass.stage;
+  }
+
   if (pass.remarks != null) {
     report.remarks = pass.remarks;
   }
 
   return report;
+}
+
+type StorageGatePassAuditFarmerStorageLink = {
+  _id: string;
+  accountNumber?: number;
+  farmerId?: {
+    _id: string;
+    name: string;
+  };
+};
+
+type StorageGatePassAuditFarmerStorageLinkLean = {
+  _id?: unknown;
+  accountNumber?: number;
+  farmerId?: {
+    _id?: unknown;
+    name?: string;
+  } | null;
+};
+
+function getAuditFarmerStorageLinkId(value: unknown): string | null {
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value === 'string' && mongoose.Types.ObjectId.isValid(value)) {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && '_id' in value) {
+    return getAuditFarmerStorageLinkId((value as { _id: unknown })._id);
+  }
+
+  return null;
+}
+
+function formatFarmerStorageLinkForAudit(
+  link: StorageGatePassAuditFarmerStorageLinkLean
+): StorageGatePassAuditFarmerStorageLink {
+  const formatted: StorageGatePassAuditFarmerStorageLink = {
+    _id: toObjectIdString(link._id),
+  };
+
+  if (link.accountNumber != null) {
+    formatted.accountNumber = link.accountNumber;
+  }
+
+  if (link.farmerId) {
+    formatted.farmerId = {
+      _id: toObjectIdString(link.farmerId._id),
+      name: link.farmerId.name ?? '',
+    };
+  }
+
+  return formatted;
+}
+
+function populateAuditStateFarmerStorageLink(
+  state: unknown,
+  farmerStorageLinkMap: Map<string, StorageGatePassAuditFarmerStorageLink>
+): unknown {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return state;
+  }
+
+  const auditState = state as Record<string, unknown>;
+  const farmerStorageLinkId = getAuditFarmerStorageLinkId(
+    auditState.farmerStorageLinkId
+  );
+  if (!farmerStorageLinkId) {
+    return auditState;
+  }
+
+  const farmerStorageLink = farmerStorageLinkMap.get(farmerStorageLinkId);
+  if (!farmerStorageLink) {
+    return auditState;
+  }
+
+  return {
+    ...auditState,
+    farmerStorageLinkId: farmerStorageLink,
+  };
+}
+
+async function buildAuditFarmerStorageLinkMap(
+  audits: Array<Record<string, unknown>>
+): Promise<Map<string, StorageGatePassAuditFarmerStorageLink>> {
+  const farmerStorageLinkIds = new Set<string>();
+
+  for (const audit of audits) {
+    for (const stateKey of ['previousState', 'modifiedState'] as const) {
+      const state = audit[stateKey];
+      if (!state || typeof state !== 'object' || Array.isArray(state)) {
+        continue;
+      }
+
+      const farmerStorageLinkId = getAuditFarmerStorageLinkId(
+        (state as Record<string, unknown>).farmerStorageLinkId
+      );
+      if (farmerStorageLinkId) {
+        farmerStorageLinkIds.add(farmerStorageLinkId);
+      }
+    }
+  }
+
+  if (farmerStorageLinkIds.size === 0) {
+    return new Map();
+  }
+
+  const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+  const links = await FarmerStorageLink.find({
+    _id: {
+      $in: [...farmerStorageLinkIds].map(
+        (id) => new mongoose.Types.ObjectId(id)
+      ),
+    },
+  })
+    .select('accountNumber farmerId')
+    .populate({ path: 'farmerId', select: 'name' })
+    .lean();
+
+  return new Map(
+    (links as unknown as StorageGatePassAuditFarmerStorageLinkLean[]).map(
+      (link) => {
+        const formattedLink = formatFarmerStorageLinkForAudit(link);
+        return [formattedLink._id, formattedLink];
+      }
+    )
+  );
+}
+
+async function formatStorageGatePassAuditsForResponse(
+  audits: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  const farmerStorageLinkMap = await buildAuditFarmerStorageLinkMap(audits);
+
+  return audits.map((audit) => ({
+    ...audit,
+    previousState: populateAuditStateFarmerStorageLink(
+      audit.previousState,
+      farmerStorageLinkMap
+    ),
+    modifiedState: populateAuditStateFarmerStorageLink(
+      audit.modifiedState,
+      farmerStorageLinkMap
+    ),
+  }));
 }
 
 /* =======================
@@ -281,6 +434,7 @@ async function createSingleStorageGatePass(
     date,
     variety,
     storageCategory,
+    stage,
     remarks,
     idempotencyKey,
     farmerStorageLinkId,
@@ -340,6 +494,7 @@ async function createSingleStorageGatePass(
     date,
     variety,
     storageCategory,
+    ...(stage !== undefined && { stage }),
     bagSizes: bagSizes.map((bs) => ({
       size: bs.size,
       currentQuantity: bs.currentQuantity,
@@ -964,6 +1119,15 @@ export async function getStorageGatePassAuditsByColdStorage(
     const [total, audits] = await Promise.all([
       StorageGatePassAudit.countDocuments(filter),
       StorageGatePassAudit.find(filter)
+        .populate({
+          path: 'storageGatePassId',
+          select: 'gatePassNo manualGatePassNumber farmerStorageLinkId stage',
+          populate: {
+            path: 'farmerStorageLinkId',
+            select: 'accountNumber farmerId',
+            populate: { path: 'farmerId', select: 'name' },
+          },
+        })
         .populate('editedById', 'name mobileNumber')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
@@ -972,14 +1136,17 @@ export async function getStorageGatePassAuditsByColdStorage(
     ]);
 
     const totalPages = Math.ceil(total / limit);
+    const formattedAudits = await formatStorageGatePassAuditsForResponse(
+      audits as unknown as Array<Record<string, unknown>>
+    );
 
     logger?.info(
-      { coldStorageId, count: audits.length, total, page, limit },
+      { coldStorageId, count: formattedAudits.length, total, page, limit },
       'Retrieved storage gate pass audits by cold storage'
     );
 
     return {
-      audits: audits as unknown as Array<Record<string, unknown>>,
+      audits: formattedAudits,
       pagination: { page, limit, total, totalPages },
     };
   } catch (error) {

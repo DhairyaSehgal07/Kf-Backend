@@ -49,6 +49,19 @@ export const createStorageGatePassSchema = z.object({
 
   storageCategory: z.string().trim().min(1, 'Storage category is required'),
 
+  generation: z
+    .string()
+    .trim()
+    .min(1, 'Generation must be non-empty if provided')
+    .max(100, 'Generation must not exceed 100 characters')
+    .optional(),
+
+  stage: z
+    .string()
+    .trim()
+    .max(200, 'Stage must not exceed 200 characters')
+    .optional(),
+
   bagSizes: z.array(bagSizeSchema).min(1, 'At least one bag size is required'),
 
   remarks: z
@@ -131,6 +144,8 @@ export interface StorageReport {
   date: string;
   variety: string;
   storageCategory: string;
+  generation?: string;
+  stage?: string;
   bagSizes: StorageReportBagSize[];
   remarks?: string;
 }
@@ -177,6 +192,17 @@ export const updateStorageGatePassSchema = z.object({
         .string()
         .trim()
         .min(1, 'Storage category is required')
+        .optional(),
+      generation: z
+        .string()
+        .trim()
+        .min(1, 'Generation must be non-empty if provided')
+        .max(100, 'Generation must not exceed 100 characters')
+        .optional(),
+      stage: z
+        .string()
+        .trim()
+        .max(200, 'Stage must not exceed 200 characters')
         .optional(),
       bagSizes: z
         .array(bagSizeSchema)
