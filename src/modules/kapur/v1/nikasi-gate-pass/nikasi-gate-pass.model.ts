@@ -4,43 +4,37 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
    INTERFACES
 ======================= */
 
-interface INikasiOrderDetail {
+interface INikasiBagSize {
   size: string;
-  gradingGatePassId: Types.ObjectId;
-  quantityAvailable: number;
+  variety: string;
   quantityIssued: number;
-}
-
-/** Snapshot of a grading gate pass at creation time (remaining quantities) */
-export interface INikasiGradingGatePassSnapshotBagSize {
-  size: string;
-  quantity: number;
-}
-
-export interface INikasiGradingGatePassSnapshot {
-  _id: Types.ObjectId;
-  gatePassNo: number;
-  incomingBagSizes: INikasiGradingGatePassSnapshotBagSize[];
 }
 
 export interface INikasiGatePass extends Document {
   farmerStorageLinkId: Types.ObjectId;
+  dispatchLedgerId: Types.ObjectId;
   createdBy?: Types.ObjectId;
   gatePassNo: number;
   manualGatePassNumber?: number;
-  gradingGatePassIds: Types.ObjectId[];
-  /** Snapshot of each grading gate pass state (remaining qty) when this nikasi pass was created */
-  gradingGatePassSnapshots?: INikasiGradingGatePassSnapshot[];
+  isBooked?: boolean;
+
+  billNumber: number;
+  bitliNumber: number;
+  category: string;
 
   date: Date;
-  variety: string;
 
   from: string;
-  toField: string;
+  to?: string;
 
-  orderDetails: INikasiOrderDetail[];
+  truckNumber?: string;
+
+  bagSize: INikasiBagSize[];
 
   remarks?: string;
+
+  netWeight?: number;
+  averageWeightPerBag?: number;
 
   /** Idempotency key for create; sparse unique index */
   idempotencyKey?: string;
@@ -53,7 +47,7 @@ export interface INikasiGatePass extends Document {
    SUB SCHEMAS
 ======================= */
 
-const NikasiOrderDetailSchema = new Schema<INikasiOrderDetail>(
+const NikasiBagSizeSchema = new Schema<INikasiBagSize>(
   {
     size: {
       type: String,
@@ -61,16 +55,10 @@ const NikasiOrderDetailSchema = new Schema<INikasiOrderDetail>(
       trim: true,
     },
 
-    gradingGatePassId: {
-      type: Schema.Types.ObjectId,
-      ref: 'GradingGatePass',
+    variety: {
+      type: String,
       required: true,
-    },
-
-    quantityAvailable: {
-      type: Number,
-      required: true,
-      min: 0,
+      trim: true,
     },
 
     quantityIssued: {
@@ -82,33 +70,6 @@ const NikasiOrderDetailSchema = new Schema<INikasiOrderDetail>(
   { _id: false }
 );
 
-const NikasiGradingGatePassSnapshotBagSizeSchema =
-  new Schema<INikasiGradingGatePassSnapshotBagSize>(
-    {
-      size: { type: String, required: true, trim: true },
-      quantity: { type: Number, required: true, min: 0 },
-    },
-    { _id: false }
-  );
-
-const NikasiGradingGatePassSnapshotSchema =
-  new Schema<INikasiGradingGatePassSnapshot>(
-    {
-      _id: {
-        type: Schema.Types.ObjectId,
-        ref: 'GradingGatePass',
-        required: true,
-      },
-      gatePassNo: { type: Number, required: true },
-      incomingBagSizes: {
-        type: [NikasiGradingGatePassSnapshotBagSizeSchema],
-        required: true,
-        default: [],
-      },
-    },
-    { _id: false }
-  );
-
 /* =======================
    MAIN SCHEMA
 ======================= */
@@ -119,6 +80,13 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       type: Schema.Types.ObjectId,
       ref: 'FarmerStorageLink',
       required: true,
+      index: true,
+    },
+    dispatchLedgerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'DispatchLedger',
+      required: true,
+      index: true,
     },
 
     createdBy: {
@@ -130,37 +98,38 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
     gatePassNo: {
       type: Number,
       required: true,
+      index: true,
     },
 
     manualGatePassNumber: {
       type: Number,
     },
 
-    gradingGatePassIds: {
-      type: [Schema.Types.ObjectId],
-      ref: 'GradingGatePass',
-      required: true,
-      validate: {
-        validator: (ids: Types.ObjectId[]) => ids.length > 0,
-        message: 'At least one grading gate pass ID is required',
-      },
+    isBooked: {
+      type: Boolean,
+      default: false,
     },
 
-    gradingGatePassSnapshots: {
-      type: [NikasiGradingGatePassSnapshotSchema],
-      default: undefined,
-      select: true,
+    billNumber: {
+      type: Number,
+      required: true,
+    },
+
+    bitliNumber: {
+      type: Number,
+      required: true,
+    },
+
+    category: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     date: {
       type: Date,
       required: true,
-    },
-
-    variety: {
-      type: String,
-      required: true,
-      trim: true,
+      index: true,
     },
 
     from: {
@@ -169,24 +138,37 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
       trim: true,
     },
 
-    toField: {
+    to: {
       type: String,
-      required: true,
       trim: true,
     },
 
-    orderDetails: {
-      type: [NikasiOrderDetailSchema],
+    truckNumber: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+    },
+
+    bagSize: {
+      type: [NikasiBagSizeSchema],
       required: true,
       validate: {
-        validator: (details: INikasiOrderDetail[]) => details.length > 0,
-        message: 'At least one order detail is required',
+        validator: (details: INikasiBagSize[]) => details.length > 0,
+        message: 'At least one bag size is required',
       },
     },
 
     remarks: {
       type: String,
       trim: true,
+    },
+
+    netWeight: {
+      type: Number,
+    },
+
+    averageWeightPerBag: {
+      type: Number,
     },
 
     idempotencyKey: {
@@ -207,6 +189,9 @@ NikasiGatePassSchema.index(
   { idempotencyKey: 1 },
   { unique: true, sparse: true }
 );
+
+// Created by user lookup
+// createdBy is indexed via field-level index: true
 
 // Farmer storage link lookup
 NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });

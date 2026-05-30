@@ -3,6 +3,7 @@ import {
   getStorageGatePassReportHandler,
   getStorageSummaryHandler,
   getStorageDailyMonthlyTrendHandler,
+  getStorageLocationWiseHandler,
 } from './analytics.controller.js';
 import { authenticate } from '../../../../utils/auth.js';
 
@@ -358,5 +359,111 @@ export async function storageAnalyticsRoutes(fastify: FastifyInstance) {
       },
     },
     getStorageDailyMonthlyTrendHandler as never
+  );
+
+  // Location-wise storage analytics – hierarchical chamber → floor → row with variety breakdown
+  fastify.get(
+    '/storage-location-wise',
+    {
+      preHandler: [authenticate],
+      schema: {
+        description:
+          'Hierarchical location-wise storage analytics from storage gate passes. Top level is chamber; each chamber includes floor summaries, each floor includes row summaries. Every level includes total quantities (initial, current, removed) and a per-variety breakdown. Optional dateFrom/dateTo filter by gate pass date; optional chamber/floor/row/variety narrow the scope.',
+        tags: ['Analytics', 'Storage'],
+        summary:
+          'Location-wise storage analytics (chamber / floor / row / variety)',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              description: 'Start date (inclusive), YYYY-MM-DD',
+            },
+            dateTo: {
+              type: 'string',
+              description: 'End date (inclusive), YYYY-MM-DD',
+            },
+            variety: {
+              type: 'string',
+              description: 'Filter by variety (exact match)',
+            },
+            chamber: {
+              type: 'string',
+              description: 'Filter to a specific chamber',
+            },
+            floor: {
+              type: 'string',
+              description:
+                'Filter to a specific floor (within chamber if chamber is set)',
+            },
+            row: {
+              type: 'string',
+              description: 'Filter to a specific row',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Hierarchical location breakdown with variety summaries at chamber, floor, and row levels',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  chambers: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      additionalProperties: true,
+                    },
+                  },
+                  totals: {
+                    type: 'object',
+                    additionalProperties: true,
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error (e.g. invalid dateFrom/dateTo)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getStorageLocationWiseHandler as never
   );
 }

@@ -11,6 +11,7 @@ import {
   getStorageSummary,
   getStorageGatePassReport,
   getStorageDailyMonthlyTrend,
+  getStorageLocationWiseAnalytics,
 } from './analytics.service.js';
 import { AuthenticatedRequest } from '../../../../utils/auth.js';
 import {
@@ -636,6 +637,73 @@ export async function getStorageDailyMonthlyTrendHandler(
     request.log.error(
       { error, query: request.query },
       'Error in getStorageDailyMonthlyTrendHandler'
+    );
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    throw error;
+  }
+}
+
+export interface StorageLocationWiseQuerystring {
+  dateFrom?: string;
+  dateTo?: string;
+  variety?: string;
+  chamber?: string;
+  floor?: string;
+  row?: string;
+}
+
+/**
+ * Handler for GET /analytics/storage-location-wise – hierarchical chamber/floor/row analytics with variety breakdown
+ */
+export async function getStorageLocationWiseHandler(
+  request: FastifyRequest<{ Querystring: StorageLocationWiseQuerystring }>,
+  reply: FastifyReply
+) {
+  try {
+    const req = request as AuthenticatedRequest;
+    const coldStorageId =
+      typeof req.user?.coldStorageId === 'object' &&
+      req.user.coldStorageId !== null &&
+      '_id' in req.user.coldStorageId
+        ? (req.user.coldStorageId as { _id: string })._id
+        : (req.user?.coldStorageId as string | undefined);
+
+    if (!coldStorageId) {
+      throw new UnauthorizedError(
+        'Cold storage not found in token',
+        'MISSING_COLD_STORAGE'
+      );
+    }
+
+    const { dateFrom, dateTo, variety, chamber, floor, row } = request.query;
+    const data = await getStorageLocationWiseAnalytics(
+      coldStorageId,
+      { dateFrom, dateTo, variety, chamber, floor, row },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getStorageLocationWiseHandler'
     );
     if (error instanceof UnauthorizedError) {
       return reply.code(error.statusCode).send({

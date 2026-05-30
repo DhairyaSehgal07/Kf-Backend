@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-05-30
+
+### Added
+
+- **Analytics – Storage location-wise breakdown**
+  - New endpoint GET `/api/v1/analytics/storage-location-wise` – hierarchical chamber → floor → row storage analytics with per-variety quantity breakdown (initial, current, removed) at every level.
+  - Optional filters: `dateFrom`, `dateTo`, `variety`, `chamber`, `floor`, `row`.
+
+- **Nikasi Gate Pass – Search**
+  - New POST `/api/v1/nikasi-gate-pass/search` – find gate passes by number, matching either `gatePassNo` or `manualGatePassNumber` within the authenticated cold storage.
+
+### Changed
+
+- **Nikasi Gate Pass – Model and create flow**
+  - Refactored nikasi gate pass to link to `dispatchLedgerId` instead of grading gate pass allocations.
+  - Replaced `orderDetails` with `bagSize` entries (`size`, `variety`, `quantityIssued`).
+  - Added fields: `billNumber`, `bitliNumber`, `category`, `isBooked`, `truckNumber`, `netWeight`, `averageWeightPerBag`.
+  - Renamed `toField` to optional `to`; removed top-level `variety`, `gradingGatePassIds`, and grading gate pass snapshots.
+  - POST `/` create now persists directly via the model (no grading allocation transaction).
+
+- **Nikasi Gate Pass – List API**
+  - GET `/api/v1/nikasi-gate-pass` now returns a paginated list with `limit`, `page`, `sortOrder` (asc/desc by gate pass number), and optional `dateFrom`/`dateTo` filters.
+  - Response shape: `{ nikasiGatePasses, pagination }`.
+
+- **Analytics – Overview**
+  - `totalBagsDispatched` in overview now sums `bagSize[].quantityIssued` on nikasi gate passes (was `orderDetails`).
+
+### Removed
+
+- **Nikasi Gate Pass**
+  - Removed POST `/bulk` bulk-create endpoint.
+  - Removed GET `/grouped` grouped-by-manual-number-and-date endpoint.
+  - Removed grading-gate-pass allocation create schemas and service logic.
+
+---
+
 ## [1.20.0] - 2026-03-27
 
 ### Added
