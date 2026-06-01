@@ -1,6 +1,6 @@
 /**
  * Sync MongoDB indexes to match Mongoose schema definitions.
- * Run with: pnpm run sync-indexes
+ * Run with: npm run sync-indexes
  * Requires MONGO_URI in env (e.g. from .env).
  *
  * - Creates any indexes defined in schemas that are missing in the DB.

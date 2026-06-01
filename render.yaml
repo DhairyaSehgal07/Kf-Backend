@@ -6,5 +6,5 @@ services:
     runtime: node
     # Use repo root so build creates dist/ and start finds dist/server.js (not src/dist).
     rootDir: .
-    buildCommand: pnpm install --frozen-lockfile && pnpm run build
-    startCommand: pnpm start
+    buildCommand: npm ci && npm run build
+    startCommand: npm start

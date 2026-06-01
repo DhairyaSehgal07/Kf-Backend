@@ -11,7 +11,7 @@ Instructions for installing and setting up your project locally.
 ### Prerequisites
 
 - Node.js (20.17.0)
-- [pnpm](https://pnpm.io) (9.9.0)
+- npm (comes with Node.js)
 
 ### Steps
 
@@ -25,7 +25,7 @@ Instructions for installing and setting up your project locally.
    ```
 3. Install dependencies:
    ```bash
-   pnpm install
+   npm install
    ```
 
 ## Usage
@@ -34,7 +34,7 @@ Instructions for running and using your project.
 
 1. Start the server:
    ```bash
-   pnpm start
+   npm start
    ```
 2. Open your browser and navigate to `http://localhost:5000`
 
