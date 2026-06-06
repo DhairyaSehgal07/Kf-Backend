@@ -584,6 +584,11 @@ export async function gradingGatePassRoutes(fastify: FastifyInstance) {
                             },
                           },
                         },
+                        totalBags: {
+                          type: 'number',
+                          description:
+                            'Total bags: sum of quantity across all order detail bag sizes',
+                        },
                         incomingNetWeightKg: {
                           type: 'string',
                           description:

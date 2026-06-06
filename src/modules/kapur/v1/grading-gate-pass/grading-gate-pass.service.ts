@@ -645,7 +645,12 @@ function mapGradingGatePassToReport(
     (total, item) => total + (item.netWeightKg ?? 0),
     0
   );
-  const netWeightKg = calculateGradingNetWeightKg(pass.orderDetails ?? []);
+  const orderDetails = pass.orderDetails ?? [];
+  const totalBags = orderDetails.reduce(
+    (total, detail) => total + (detail.quantity ?? 0),
+    0
+  );
+  const netWeightKg = calculateGradingNetWeightKg(orderDetails);
   const wastageKg = calculateWastageKg(incomingNetWeightKg, netWeightKg);
   const wastagePercentage = calculateWastagePercentage(
     wastageKg,
@@ -661,7 +666,8 @@ function mapGradingGatePassToReport(
     gatePassNo: pass.gatePassNo,
     date: formatReportDateTime(pass.date),
     variety: pass.variety,
-    orderDetails: pass.orderDetails ?? [],
+    orderDetails,
+    totalBags,
     incomingNetWeightKg: formatNumberMaxTwoDecimals(incomingNetWeightKg),
     netWeightKg: formatNumberMaxTwoDecimals(netWeightKg),
     wastageKg: formatNumberMaxTwoDecimals(wastageKg),

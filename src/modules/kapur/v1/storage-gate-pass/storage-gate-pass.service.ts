@@ -200,6 +200,12 @@ function mapStorageGatePassToReport(
     };
   }
 
+  const bagSizes = pass.bagSizes ?? [];
+  const totalBags = bagSizes.reduce(
+    (total, bagSize) => total + (bagSize.initialQuantity ?? 0),
+    0
+  );
+
   const report: StorageReport = {
     _id: toObjectIdString(pass._id),
     farmerStorageLinkId: farmerStorageLink,
@@ -207,7 +213,8 @@ function mapStorageGatePassToReport(
     date: formatReportDateTime(pass.date),
     variety: pass.variety,
     storageCategory: pass.storageCategory,
-    bagSizes: pass.bagSizes ?? [],
+    bagSizes,
+    totalBags,
   };
 
   if (pass.createdBy) {

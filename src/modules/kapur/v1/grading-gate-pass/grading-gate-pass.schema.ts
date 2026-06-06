@@ -184,6 +184,7 @@ export interface GradingReport {
   date: string;
   variety: string;
   orderDetails: GradingReportOrderDetail[];
+  totalBags: number;
   incomingNetWeightKg: string;
   netWeightKg: string;
   wastageKg: string;

@@ -147,6 +147,7 @@ export interface StorageReport {
   generation?: string;
   stage?: string;
   bagSizes: StorageReportBagSize[];
+  totalBags: number;
   remarks?: string;
 }
 
