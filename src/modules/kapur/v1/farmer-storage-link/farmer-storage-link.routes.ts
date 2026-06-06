@@ -2,13 +2,13 @@ import { FastifyInstance } from 'fastify';
 import {
   updateFarmerStorageLinkHandler,
   getFarmerStorageLinksByColdStorageHandler,
-  getVouchersByFarmerStorageLinkHandler,
+  getGatePassesHandler,
   quickRegisterFarmerHandler,
 } from './farmer-storage-link.controller.js';
 import {
   quickRegisterFarmerSchema,
   updateFarmerStorageLinkSchema,
-  getVouchersByFarmerStorageLinkParamsSchema,
+  getGatePassesParamsSchema,
 } from './farmer-storage-link.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
@@ -73,16 +73,16 @@ export async function farmerStorageLinkRoutes(fastify: FastifyInstance) {
     getFarmerStorageLinksByColdStorageHandler as never
   );
 
-  // Get all vouchers (daybook-style) for a single farmer-storage-link
+  // Get all gate passes (incoming, grading, storage) for a farmer-storage-link
   fastify.get(
-    '/:farmerStorageLinkId/vouchers',
+    '/:farmerStorageLinkId/gate-passes',
     {
       schema: {
-        ...getVouchersByFarmerStorageLinkParamsSchema,
+        ...getGatePassesParamsSchema,
         description:
-          "Get all vouchers (daybook-style entries) for a single farmer-storage-link. Returns all orders (no pagination). Link must belong to the authenticated store admin's cold storage. Supports sortOrder (asc|desc) and gatePassType filter.",
+          "Get all incoming, grading, and storage gate passes for a specific farmer-storage-link. Link must belong to the authenticated store admin's cold storage. Returns all vouchers (no pagination) with bag totals scoped to that farmer.",
         tags: ['Farmer Storage Link'],
-        summary: 'Get vouchers by farmer-storage-link',
+        summary: 'Get gate passes by farmer-storage-link',
         params: {
           type: 'object',
           required: ['farmerStorageLinkId'],
@@ -93,81 +93,31 @@ export async function farmerStorageLinkRoutes(fastify: FastifyInstance) {
             },
           },
         },
-        querystring: {
-          type: 'object',
-          properties: {
-            sortOrder: {
-              type: 'string',
-              enum: ['asc', 'desc'],
-              description: 'Sort by date (default desc)',
-            },
-            gatePassType: {
-              type: 'string',
-              description:
-                'Filter by stage "up to" (incoming|grading|storage|nikasi|outgoing). Returns vouchers that have reached this stage and all prior stages but no later stage.',
-            },
-          },
-        },
         response: {
           200: {
             description:
-              'Daybook-style array of entries (one per incoming) with attached passes and summaries; all orders returned (no pagination).',
+              'All incoming, grading, and storage gate passes with aggregate bag totals',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
                 type: 'object',
                 properties: {
-                  daybook: {
+                  incoming: {
                     type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        incoming: {
-                          type: 'object',
-                          additionalProperties: true,
-                          properties: {
-                            category: {
-                              type: 'string',
-                              description:
-                                'Incoming category (e.g. Own Stock, Contract Farming)',
-                            },
-                          },
-                        },
-                        farmer: {
-                          type: 'object',
-                          additionalProperties: true,
-                          nullable: true,
-                        },
-                        gradingPasses: {
-                          type: 'array',
-                          items: { type: 'object', additionalProperties: true },
-                        },
-                        storagePasses: {
-                          type: 'array',
-                          items: { type: 'object', additionalProperties: true },
-                        },
-                        nikasiPasses: {
-                          type: 'array',
-                          items: { type: 'object', additionalProperties: true },
-                        },
-                        outgoingPasses: {
-                          type: 'array',
-                          items: { type: 'object', additionalProperties: true },
-                        },
-                        summaries: {
-                          type: 'object',
-                          properties: {
-                            totalBagsIncoming: { type: 'number' },
-                            totalBagsGraded: { type: 'number' },
-                            totalBagsStored: { type: 'number' },
-                            totalBagsNikasi: { type: 'number' },
-                            totalBagsOutgoing: { type: 'number' },
-                          },
-                        },
-                      },
-                    },
+                    items: { type: 'object', additionalProperties: true },
                   },
+                  grading: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  storage: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  totalIncomingBags: { type: 'number' },
+                  totalGradingBags: { type: 'number' },
+                  totalStorageBags: { type: 'number' },
                 },
               },
             },
@@ -211,7 +161,7 @@ export async function farmerStorageLinkRoutes(fastify: FastifyInstance) {
         },
       },
     },
-    getVouchersByFarmerStorageLinkHandler as never
+    getGatePassesHandler as never
   );
 
   // Quick register farmer

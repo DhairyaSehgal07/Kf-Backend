@@ -13,12 +13,9 @@ import {
   QuickRegisterFarmerInput,
   UpdateFarmerStorageLinkInput,
 } from './farmer-storage-link.schema.js';
-import {
-  getDaybook,
-  type GetDaybookOptions,
-  type DaybookEntry,
-  type DaybookPagination,
-} from '../store-admin/store-admin.service.js';
+import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model.js';
+import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
+import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 
 /**
  * Retrieves all farmer-storage-links for a cold storage with farmer details populated
@@ -73,17 +70,20 @@ export async function getFarmerStorageLinksByColdStorage(
 }
 
 /**
- * Retrieves all vouchers (daybook-style entries) for a single farmer-storage-link.
- * Same response shape and summary calculations as daybook; link must belong to the given cold storage.
+ * Retrieves all incoming, grading, and storage gate passes for a single farmer-storage-link
+ * with aggregate bag totals scoped to that farmer.
  */
-export async function getVouchersByFarmerStorageLink(
+export async function getGatePassesForFarmerStorageLink(
   farmerStorageLinkId: string,
   coldStorageId: string,
-  options: GetDaybookOptions = {},
   logger?: FastifyBaseLogger
 ): Promise<{
-  daybook: DaybookEntry[];
-  pagination: DaybookPagination;
+  incoming: Array<Record<string, unknown>>;
+  grading: Array<Record<string, unknown>>;
+  storage: Array<Record<string, unknown>>;
+  totalIncomingBags: number;
+  totalGradingBags: number;
+  totalStorageBags: number;
 }> {
   try {
     if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
@@ -128,19 +128,103 @@ export async function getVouchersByFarmerStorageLink(
       );
     }
 
-    return getDaybook(coldStorageId, options, logger, [linkObjectId]);
+    const linkFilter = { farmerStorageLinkId: linkObjectId };
+
+    const [incoming, grading, storage] = await Promise.all([
+      IncomingGatePass.find(linkFilter)
+        .populate({
+          path: 'farmerStorageLinkId',
+          populate: [
+            { path: 'farmerId', select: 'name mobileNumber address' },
+            { path: 'linkedById', select: 'name' },
+          ],
+        })
+        .populate('createdBy', 'name mobileNumber')
+        .sort({ gatePassNo: -1, date: -1 })
+        .lean(),
+      GradingGatePass.find(linkFilter)
+        .populate({
+          path: 'farmerStorageLinkId',
+          select: 'accountNumber',
+          populate: { path: 'farmerId', select: 'name' },
+        })
+        .populate({
+          path: 'incomingGatePassIds',
+          select:
+            'gatePassNo manualGatePassNumber bagsReceived truckNumber date weightSlip',
+        })
+        .populate('createdBy', 'name mobileNumber')
+        .sort({ gatePassNo: -1, date: -1 })
+        .lean(),
+      StorageGatePass.find(linkFilter)
+        .populate({
+          path: 'farmerStorageLinkId',
+          select: 'accountNumber farmerId linkedById',
+          populate: [
+            { path: 'farmerId', select: 'name mobileNumber address' },
+            { path: 'linkedById', select: 'name' },
+          ],
+        })
+        .populate({ path: 'createdBy', select: 'name mobileNumber' })
+        .sort({ gatePassNo: -1, date: -1 })
+        .lean(),
+    ]);
+
+    const totalIncomingBags = incoming.reduce(
+      (sum, pass) => sum + (pass.bagsReceived ?? 0),
+      0
+    );
+
+    const totalGradingBags = grading.reduce((sum, pass) => {
+      const passBags = (pass.orderDetails ?? []).reduce(
+        (detailSum, detail) => detailSum + (detail.quantity ?? 0),
+        0
+      );
+      return sum + passBags;
+    }, 0);
+
+    const totalStorageBags = storage.reduce((sum, pass) => {
+      const passBags = (pass.bagSizes ?? []).reduce(
+        (bagSum, bagSize) => bagSum + (bagSize.initialQuantity ?? 0),
+        0
+      );
+      return sum + passBags;
+    }, 0);
+
+    logger?.info(
+      {
+        farmerStorageLinkId,
+        coldStorageId,
+        incomingCount: incoming.length,
+        gradingCount: grading.length,
+        storageCount: storage.length,
+        totalIncomingBags,
+        totalGradingBags,
+        totalStorageBags,
+      },
+      'Retrieved gate passes for farmer storage link'
+    );
+
+    return {
+      incoming: incoming as unknown as Array<Record<string, unknown>>,
+      grading: grading as unknown as Array<Record<string, unknown>>,
+      storage: storage as unknown as Array<Record<string, unknown>>,
+      totalIncomingBags,
+      totalGradingBags,
+      totalStorageBags,
+    };
   } catch (error) {
     if (error instanceof ValidationError || error instanceof NotFoundError) {
       throw error;
     }
     logger?.error(
       { error, farmerStorageLinkId, coldStorageId },
-      'Error retrieving vouchers by farmer storage link'
+      'Error retrieving gate passes for farmer storage link'
     );
     throw new AppError(
-      'Failed to retrieve vouchers for farmer storage link',
+      'Failed to retrieve gate passes',
       500,
-      'GET_VOUCHERS_BY_LINK_ERROR'
+      'GET_GATE_PASSES_ERROR'
     );
   }
 }

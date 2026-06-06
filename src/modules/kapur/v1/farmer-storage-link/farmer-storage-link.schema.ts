@@ -139,7 +139,7 @@ export type UpdateFarmerStorageLinkInput = z.infer<
   typeof updateFarmerStorageLinkSchema
 >['body'];
 
-export const getVouchersByFarmerStorageLinkParamsSchema = z.object({
+export const getGatePassesParamsSchema = z.object({
   params: z.object({
     farmerStorageLinkId: z
       .string()
@@ -152,6 +152,6 @@ export const getVouchersByFarmerStorageLinkParamsSchema = z.object({
   }),
 });
 
-export type GetVouchersByFarmerStorageLinkParams = z.infer<
-  typeof getVouchersByFarmerStorageLinkParamsSchema
+export type GetGatePassesParams = z.infer<
+  typeof getGatePassesParamsSchema
 >['params'];

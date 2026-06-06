@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   getFarmerStorageLinksByColdStorage,
-  getVouchersByFarmerStorageLink,
+  getGatePassesForFarmerStorageLink,
   quickRegisterFarmer,
   updateFarmerStorageLink,
 } from './farmer-storage-link.service.js';
@@ -101,16 +101,10 @@ export async function getFarmerStorageLinksByColdStorageHandler(
 }
 
 /**
- * Handler for retrieving all vouchers (daybook-style) for a single farmer-storage-link
+ * Handler for retrieving all incoming, grading, and storage gate passes for a farmer-storage-link
  */
-export async function getVouchersByFarmerStorageLinkHandler(
-  request: FastifyRequest<{
-    Params: { farmerStorageLinkId: string };
-    Querystring: {
-      sortOrder?: 'asc' | 'desc';
-      gatePassType?: string | string[];
-    };
-  }>,
+export async function getGatePassesHandler(
+  request: FastifyRequest<{ Params: { farmerStorageLinkId: string } }>,
   reply: FastifyReply
 ) {
   try {
@@ -127,59 +121,19 @@ export async function getVouchersByFarmerStorageLinkHandler(
     }
 
     const { farmerStorageLinkId } = request.params;
-    const query = request.query;
-    const sortOrder = query.sortOrder ?? 'desc';
-    const gatePassType = query.gatePassType;
-    const gatePassTypes =
-      gatePassType == null
-        ? undefined
-        : Array.isArray(gatePassType)
-          ? (gatePassType as (
-              | 'incoming'
-              | 'grading'
-              | 'storage'
-              | 'nikasi'
-              | 'outgoing'
-            )[])
-          : ((gatePassType as string)
-              .split(',')
-              .map((t) => t.trim().toLowerCase())
-              .filter((t) =>
-                [
-                  'incoming',
-                  'grading',
-                  'storage',
-                  'nikasi',
-                  'outgoing',
-                ].includes(t)
-              ) as (
-              | 'incoming'
-              | 'grading'
-              | 'storage'
-              | 'nikasi'
-              | 'outgoing'
-            )[]);
 
-    const result = await getVouchersByFarmerStorageLink(
+    const result = await getGatePassesForFarmerStorageLink(
       farmerStorageLinkId,
       coldStorageId,
-      {
-        unbounded: true,
-        sortOrder,
-        gatePassTypes: gatePassTypes?.length ? gatePassTypes : undefined,
-      },
       request.log
     );
 
     return reply.send({
       success: true,
-      data: { daybook: result.daybook },
+      data: result,
     });
   } catch (error) {
-    request.log.error(
-      { error },
-      'Error in getVouchersByFarmerStorageLinkHandler'
-    );
+    request.log.error({ error }, 'Error in getGatePassesHandler');
 
     if (error instanceof ValidationError) {
       return reply.code(error.statusCode).send({
