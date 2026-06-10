@@ -632,3 +632,134 @@ export async function updateBooking(
     throw new AppError('Failed to update booking', 500, 'UPDATE_BOOKING_ERROR');
   }
 }
+
+export interface BookingSummarySizeRow {
+  size: string;
+  initialQuantity: number;
+  currentQuantity: number;
+  quantityRemoved: number;
+}
+
+export interface BookingSummaryVarietyRow {
+  variety: string;
+  initialQuantity: number;
+  currentQuantity: number;
+  quantityRemoved: number;
+  sizes: BookingSummarySizeRow[];
+}
+
+/**
+ * Per-variety booking summary with per-size breakdown.
+ * Optional dateFrom/dateTo filter by booking date.
+ */
+export async function getBookingSummary(
+  coldStorageId: string,
+  filters: BookingDateFilters,
+  logger?: FastifyBaseLogger
+): Promise<BookingSummaryVarietyRow[]> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+
+  const dispatchLedgerIds =
+    await getDispatchLedgerIdsForColdStorage(coldStorageId);
+
+  if (dispatchLedgerIds.length === 0) {
+    return [];
+  }
+
+  const match: Record<string, unknown> = {
+    dispatchLedgerId: { $in: dispatchLedgerIds },
+  };
+
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+
+  const docs = await Booking.find(match).select('variety bagSizes').lean();
+
+  const byVariety = new Map<
+    string,
+    Map<string, { initial: number; current: number }>
+  >();
+
+  for (const doc of docs) {
+    const variety = doc.variety?.trim() || 'Unspecified';
+    for (const bs of doc.bagSizes ?? []) {
+      const size = bs.size?.trim() || '';
+      const initial = Number(bs.initialQuantity) || 0;
+      const current = Number(bs.currentQuantity) || 0;
+
+      let sizeMap = byVariety.get(variety);
+      if (!sizeMap) {
+        sizeMap = new Map();
+        byVariety.set(variety, sizeMap);
+      }
+
+      const existing = sizeMap.get(size) ?? { initial: 0, current: 0 };
+      existing.initial += initial;
+      existing.current += current;
+      sizeMap.set(size, existing);
+    }
+  }
+
+  const result: BookingSummaryVarietyRow[] = [];
+  for (const [variety, sizeMap] of byVariety) {
+    let varietyInitial = 0;
+    let varietyCurrent = 0;
+    const sizes: BookingSummarySizeRow[] = [];
+
+    for (const [size, { initial, current }] of sizeMap) {
+      sizes.push({
+        size,
+        initialQuantity: initial,
+        currentQuantity: current,
+        quantityRemoved: initial - current,
+      });
+      varietyInitial += initial;
+      varietyCurrent += current;
+    }
+
+    result.push({
+      variety,
+      initialQuantity: varietyInitial,
+      currentQuantity: varietyCurrent,
+      quantityRemoved: varietyInitial - varietyCurrent,
+      sizes,
+    });
+  }
+
+  result.sort((a, b) => a.variety.localeCompare(b.variety));
+
+  logger?.info(
+    { coldStorageId, varietyCount: result.length },
+    'Booking summary computed'
+  );
+
+  return result;
+}

@@ -1,10 +1,12 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createBooking,
+  getBookingSummary,
   getPaginatedBookingsByColdStorage,
   searchBookingsByNumber,
   updateBooking,
 } from './booking.service.js';
+import { getStorageSummary } from '../analytics/analytics.service.js';
 import {
   createBookingSchema,
   CreateBookingInput,
@@ -289,6 +291,104 @@ export async function getBookingsByColdStorageHandler(
             : 'An unexpected error occurred',
       },
     });
+  }
+}
+
+export async function getBookingSummaryHandler(
+  request: FastifyRequest<{
+    Querystring: { dateFrom?: string; dateTo?: string };
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+    const data = await getBookingSummary(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getBookingSummaryHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function getBookingStorageSummaryHandler(
+  request: FastifyRequest<{
+    Querystring: { dateFrom?: string; dateTo?: string };
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+    const data = await getStorageSummary(
+      coldStorageId,
+      {
+        dateFrom,
+        dateTo,
+        excludeStorageCategories: ['RENTAL'],
+      },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getBookingStorageSummaryHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    throw error;
   }
 }
 

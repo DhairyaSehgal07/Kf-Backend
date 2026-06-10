@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import {
   createBookingHandler,
+  getBookingStorageSummaryHandler,
+  getBookingSummaryHandler,
   getBookingsByColdStorageHandler,
   searchBookingHandler,
   updateBookingHandler,
@@ -285,6 +287,208 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       },
     },
     getBookingsByColdStorageHandler as never
+  );
+
+  fastify.get(
+    '/booking-summary',
+    {
+      schema: {
+        description:
+          'Get per-variety booking summary with per-size breakdown: initial quantity, current quantity, and quantity removed. Optional dateFrom/dateTo filter by booking date.',
+        tags: ['Booking'],
+        summary: 'Get booking summary by variety',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              description: 'Start date (inclusive), YYYY-MM-DD',
+            },
+            dateTo: {
+              type: 'string',
+              description: 'End date (inclusive), YYYY-MM-DD',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Array of { variety, initialQuantity, currentQuantity, quantityRemoved, sizes } with per-size breakdown',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    variety: { type: 'string' },
+                    initialQuantity: { type: 'number' },
+                    currentQuantity: { type: 'number' },
+                    quantityRemoved: { type: 'number' },
+                    sizes: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          size: { type: 'string' },
+                          initialQuantity: { type: 'number' },
+                          currentQuantity: { type: 'number' },
+                          quantityRemoved: { type: 'number' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error (e.g. invalid dateFrom/dateTo)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getBookingSummaryHandler as never
+  );
+
+  fastify.get(
+    '/booking-storage-summary',
+    {
+      schema: {
+        description:
+          'Get per-variety storage summary with per-size and per bag-type (JUTE/LENO) breakdown: initial quantity, current quantity, and quantity removed. Excludes storage gate passes with storageCategory RENTAL. Optional dateFrom/dateTo filter by gate pass date.',
+        tags: ['Booking'],
+        summary: 'Get storage summary by variety (excluding RENTAL)',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              description: 'Start date (inclusive), YYYY-MM-DD',
+            },
+            dateTo: {
+              type: 'string',
+              description: 'End date (inclusive), YYYY-MM-DD',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Array of { variety, initialQuantity, currentQuantity, quantityRemoved, sizes } with per-size and per bag-type (JUTE/LENO) breakdown',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    variety: { type: 'string' },
+                    initialQuantity: { type: 'number' },
+                    currentQuantity: { type: 'number' },
+                    quantityRemoved: { type: 'number' },
+                    sizes: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          size: { type: 'string' },
+                          initialQuantity: { type: 'number' },
+                          currentQuantity: { type: 'number' },
+                          quantityRemoved: { type: 'number' },
+                          byBagType: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                bagType: { type: 'string' },
+                                initialQuantity: { type: 'number' },
+                                currentQuantity: { type: 'number' },
+                                quantityRemoved: { type: 'number' },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error (e.g. invalid dateFrom/dateTo)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getBookingStorageSummaryHandler as never
   );
 
   fastify.put(

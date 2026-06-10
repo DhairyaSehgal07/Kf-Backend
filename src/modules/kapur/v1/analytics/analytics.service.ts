@@ -1133,6 +1133,8 @@ export async function getFarmersStockByArea(
 export interface StorageSummaryDateFilters {
   dateFrom?: string;
   dateTo?: string;
+  /** Storage gate passes with these storageCategory values are excluded */
+  excludeStorageCategories?: string[];
 }
 
 export interface StorageSummarySizeRow {
@@ -1185,6 +1187,9 @@ export async function getStorageSummary(
   const match: Record<string, unknown> = {
     farmerStorageLinkId: { $in: farmerStorageLinkIds },
   };
+  if (filters.excludeStorageCategories?.length) {
+    match.storageCategory = { $nin: filters.excludeStorageCategories };
+  }
   if (filters.dateFrom) {
     const start = new Date(filters.dateFrom);
     if (Number.isNaN(start.getTime())) {
