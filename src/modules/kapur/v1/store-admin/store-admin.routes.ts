@@ -109,7 +109,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       schema: {
         ...getVoucherNumberQuerySchema,
         description:
-          'Get the next voucher (gate pass) number for the given voucher type, scoped to the authenticated user’s cold storage',
+          'Get the next voucher (gate pass) number for the given voucher type (incoming-gate-pass, grading-gate-pass, storage-gate-pass, nikasi-gate-pass, booking-gate-pass), scoped to the authenticated user’s cold storage',
         tags: ['Store Admin'],
         summary: 'Get voucher number',
         response: {

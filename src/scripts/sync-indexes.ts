@@ -21,13 +21,15 @@ import { GradingGatePassAudit } from '../modules/kapur/v1/grading-gate-pass/grad
 import { IncomingGatePass } from '../modules/kapur/v1/incoming-gate-pass/incoming-gate-pass.model.js';
 import { IncomingGatePassAudit } from '../modules/kapur/v1/incoming-gate-pass/incoming-gate-pass-audit.model.js';
 import { NikasiGatePass } from '../modules/kapur/v1/nikasi-gate-pass/nikasi-gate-pass.model.js';
-import { OutgoingGatePass } from '../modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.model.js';
 import { Preferences } from '../modules/kapur/v1/preferences/preferences.model.js';
 import { RolePermission } from '../modules/kapur/v1/role-permission/role-permission.model.js';
 import { StorageGatePass } from '../modules/kapur/v1/storage-gate-pass/storage-gate-pass.model.js';
 import { EditHistory } from '../modules/kapur/v1/storage-gate-pass/edit-history.model.js';
 import { StoreAdmin } from '../modules/kapur/v1/store-admin/store-admin.model.js';
 import { Temperature } from '../modules/kapur/v1/temperature/temperature.model.js';
+import { DispatchLedger } from '../modules/kapur/v1/dispatch-ledger/dispatch-ledger.model.js';
+import { Booking } from '../modules/kapur/v1/booking/booking.model.js';
+import { BookingAudit } from '../modules/kapur/v1/booking/booking-audit.model.js';
 
 const MODELS = [
   ColdStorage,
@@ -38,13 +40,15 @@ const MODELS = [
   IncomingGatePass,
   IncomingGatePassAudit,
   NikasiGatePass,
-  OutgoingGatePass,
   Preferences,
   RolePermission,
   StorageGatePass,
   EditHistory,
   StoreAdmin,
   Temperature,
+  DispatchLedger,
+  Booking,
+  BookingAudit,
 ] as const;
 
 async function syncIndexes(): Promise<void> {

@@ -165,7 +165,15 @@ export type LoginStoreAdminInput = z.infer<
 >['body'];
 
 /** Allowed voucher types for Get Voucher Number route */
-export const VOUCHER_TYPE_VALUES = ['storage-gate-pass'] as const;
+export const VOUCHER_TYPE_VALUES = [
+  'incoming-gate-pass',
+  'grading-gate-pass',
+  'storage-gate-pass',
+  'nikasi-gate-pass',
+  'booking-gate-pass',
+] as const;
+
+export type VoucherNumberType = (typeof VOUCHER_TYPE_VALUES)[number];
 
 export const getVoucherNumberQuerySchema = z.object({
   querystring: z.object({
@@ -185,7 +193,6 @@ export const DAYBOOK_GATE_PASS_TYPES = [
   'grading',
   'storage',
   'nikasi',
-  'outgoing',
 ] as const;
 
 export const getDaybookQuerySchema = z.object({

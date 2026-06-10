@@ -13,10 +13,10 @@ import { incomingGatePassRoutes } from './modules/kapur/v1/incoming-gate-pass/in
 import { gradingGatePassRoutes } from './modules/kapur/v1/grading-gate-pass/grading-gate-pass.routes.js';
 import { storageGatePassRoutes } from './modules/kapur/v1/storage-gate-pass/storage-gate-pass.routes.js';
 import { nikasiGatePassRoutes } from './modules/kapur/v1/nikasi-gate-pass/nikaasi-gate-pass.routes.js';
-import { outgoingGatePassRoutes } from './modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
 import { analyticsRoutes } from './modules/kapur/v1/analytics/analytics.routes.js';
 import { temperatureRoutes } from './modules/kapur/v1/temperature/temperature.routes.js';
 import { dispatchLedgerRoutes } from './modules/kapur/v1/dispatch-ledger/dispatch-ledger.routes.js';
+import { bookingRoutes } from './modules/kapur/v1/booking/booking.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -122,11 +122,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     prefix: '/api/v1/nikasi-gate-pass',
   });
 
-  // Register outgoing gate pass routes
-  await fastify.register(outgoingGatePassRoutes, {
-    prefix: '/api/v1/outgoing-gate-pass',
-  });
-
   // Register analytics routes
   await fastify.register(analyticsRoutes, {
     prefix: '/api/v1/analytics',
@@ -140,6 +135,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register dispatch ledger routes
   await fastify.register(dispatchLedgerRoutes, {
     prefix: '/api/v1/dispatch-ledger',
+  });
+
+  // Register booking routes
+  await fastify.register(bookingRoutes, {
+    prefix: '/api/v1/booking',
   });
 
   // Global error handler

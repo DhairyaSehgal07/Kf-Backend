@@ -7,6 +7,8 @@ import {
 import {
   CreateStoreAdminInput,
   LoginStoreAdminInput,
+  VOUCHER_TYPE_VALUES,
+  type VoucherNumberType,
 } from './store-admin.schema.js';
 import {
   ConflictError,
@@ -26,7 +28,8 @@ import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
-import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
+import { Booking } from '../booking/booking.model.js';
+import { DispatchLedger } from '../dispatch-ledger/dispatch-ledger.model.js';
 
 /**
  * Get all available resources and actions for Admin permissions
@@ -471,13 +474,8 @@ export interface DaybookEntry {
   summaries: DaybookEntrySummaries;
 }
 
-/** Gate pass type filter for daybook – filter by stage "up to" (inclusive); flow: Incoming → Grading → Storage → Nikasi → Outgoing */
-export type DaybookGatePassType =
-  | 'incoming'
-  | 'grading'
-  | 'storage'
-  | 'nikasi'
-  | 'outgoing';
+/** Gate pass type filter for daybook – filter by stage "up to" (inclusive); flow: Incoming → Grading → Storage → Nikasi */
+export type DaybookGatePassType = 'incoming' | 'grading' | 'storage' | 'nikasi';
 
 /** Stage order for daybook filter (index = order in flow) */
 const DAYBOOK_STAGE_ORDER: DaybookGatePassType[] = [
@@ -485,7 +483,6 @@ const DAYBOOK_STAGE_ORDER: DaybookGatePassType[] = [
   'grading',
   'storage',
   'nikasi',
-  'outgoing',
 ];
 
 /** Options for daybook retrieval: pagination, sort, and filter by gate pass type */
@@ -508,8 +505,8 @@ export interface DaybookPagination {
 
 /**
  * Retrieves the daybook using a single aggregation pipeline: for each incoming gate pass,
- * attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries.
- * Each voucher (incoming, grading, storage, nikasi, outgoing) has createdBy populated with store-admin
+ * attached grading/storage/nikasi passes, farmer populated, and pre-computed bag summaries.
+ * Each voucher (incoming, grading, storage, nikasi) has createdBy populated with store-admin
  * name and mobileNumber. Uses $lookup with pipelines and $setIntersection for efficient joins; allows disk use for large result sets.
  * Supports pagination (limit, page), sorting by date (sortOrder), and filtering by gate pass type.
  *
@@ -581,7 +578,6 @@ export async function getDaybook(
       gradingGatePasses: GradingGatePass.collection.name,
       storageGatePasses: StorageGatePass.collection.name,
       nikasiGatePasses: NikasiGatePass.collection.name,
-      outgoingGatePasses: OutgoingGatePass.collection.name,
     };
 
     const pipeline: mongoose.PipelineStage[] = [
@@ -748,11 +744,6 @@ export async function getDaybook(
           as: 'storagePasses',
         },
       },
-      {
-        $addFields: {
-          storageIds: '$storagePasses._id',
-        },
-      },
       // Nikasi passes that reference any of this incoming's grading passes, with createdBy populated
       {
         $lookup: {
@@ -794,49 +785,6 @@ export async function getDaybook(
             { $project: { createdByPopulated: 0 } },
           ],
           as: 'nikasiPasses',
-        },
-      },
-      // Outgoing passes that reference any of this incoming's storage passes, with createdBy populated
-      {
-        $lookup: {
-          from: col.outgoingGatePasses,
-          let: { storageIds: '$storageIds' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $gt: [
-                    {
-                      $size: {
-                        $setIntersection: [
-                          { $ifNull: ['$storageGatePassIds', []] },
-                          '$$storageIds',
-                        ],
-                      },
-                    },
-                    0,
-                  ],
-                },
-              },
-            },
-            { $sort: { date: -1, gatePassNo: -1 } },
-            {
-              $lookup: {
-                from: col.storeAdmins,
-                localField: 'createdBy',
-                foreignField: '_id',
-                as: 'createdByPopulated',
-                pipeline: [{ $project: { name: 1, mobileNumber: 1 } }],
-              },
-            },
-            {
-              $addFields: {
-                createdBy: { $arrayElemAt: ['$createdByPopulated', 0] },
-              },
-            },
-            { $project: { createdByPopulated: 0 } },
-          ],
-          as: 'outgoingPasses',
         },
       },
       // Pre-compute summaries in the pipeline (no JS iteration)
@@ -896,22 +844,7 @@ export async function getDaybook(
                 },
               },
             },
-            totalBagsOutgoing: {
-              $reduce: {
-                input: { $ifNull: ['$outgoingPasses', []] },
-                initialValue: 0,
-                in: {
-                  $add: [
-                    '$$value',
-                    {
-                      $sum: {
-                        $ifNull: ['$$this.orderDetails.initialQuantity', []],
-                      },
-                    },
-                  ],
-                },
-              },
-            },
+            totalBagsOutgoing: { $literal: 0 },
           },
         },
       },
@@ -945,15 +878,15 @@ export async function getDaybook(
           gradingPasses: 1,
           storagePasses: 1,
           nikasiPasses: 1,
-          outgoingPasses: 1,
+          outgoingPasses: { $literal: [] },
           summaries: 1,
         },
       },
     ];
 
     // Optional filter: "up to" stage – return vouchers that have reached the selected stage (and all prior) but no later stage.
-    // Flow: Incoming → Grading → Storage → Nikasi → Outgoing.
-    // E.g. "incoming" = only incoming (no grading/storage/nikasi/outgoing); "storage" = has incoming+grading+storage, no nikasi/outgoing.
+    // Flow: Incoming → Grading → Storage → Nikasi.
+    // E.g. "incoming" = only incoming (no grading/storage/nikasi); "storage" = has incoming+grading+storage, no nikasi.
     if (gatePassTypes && gatePassTypes.length > 0) {
       const selectedStage =
         gatePassTypes.length === 1
@@ -983,11 +916,6 @@ export async function getDaybook(
           $gt: [{ $size: { $ifNull: ['$nikasiPasses', []] } }, 0],
         });
       }
-      if (stageIndex >= 4) {
-        andConditions.push({
-          $gt: [{ $size: { $ifNull: ['$outgoingPasses', []] } }, 0],
-        });
-      }
 
       // Must NOT have any stage after the selected one
       if (stageIndex < 1) {
@@ -1003,11 +931,6 @@ export async function getDaybook(
       if (stageIndex < 3) {
         andConditions.push({
           $eq: [{ $size: { $ifNull: ['$nikasiPasses', []] } }, 0],
-        });
-      }
-      if (stageIndex < 4) {
-        andConditions.push({
-          $eq: [{ $size: { $ifNull: ['$outgoingPasses', []] } }, 0],
         });
       }
 
@@ -1026,7 +949,7 @@ export async function getDaybook(
       passProject['gradingPasses'] = stageIndex >= 1 ? '$gradingPasses' : [];
       passProject['storagePasses'] = stageIndex >= 2 ? '$storagePasses' : [];
       passProject['nikasiPasses'] = stageIndex >= 3 ? '$nikasiPasses' : [];
-      passProject['outgoingPasses'] = stageIndex >= 4 ? '$outgoingPasses' : [];
+      passProject['outgoingPasses'] = [];
       pipeline.push({ $project: passProject });
     }
 
@@ -1281,18 +1204,6 @@ export async function logoutStoreAdmin(logger?: FastifyBaseLogger) {
   }
 }
 
-/** Voucher types supported by getNextVoucherNumber */
-export const VOUCHER_TYPES = [
-  'incoming-gate-pass',
-  'grading-gate-pass',
-  'storage-gate-pass',
-  'nikasi-gate-pass',
-  'outgoing-gate-pass',
-  'rental-incoming-order',
-] as const;
-
-export type VoucherType = (typeof VOUCHER_TYPES)[number];
-
 /**
  * Get the next voucher (gate pass) number for the given cold storage and voucher type.
  * Returns (count of existing gate passes of that type for this cold storage) + 1,
@@ -1300,7 +1211,7 @@ export type VoucherType = (typeof VOUCHER_TYPES)[number];
  */
 export async function getNextVoucherNumber(
   coldStorageId: string,
-  type: VoucherType,
+  type: VoucherNumberType,
   logger?: FastifyBaseLogger
 ): Promise<number> {
   const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
@@ -1342,15 +1253,24 @@ export async function getNextVoucherNumber(
     return next;
   }
 
-  if (type === 'outgoing-gate-pass') {
-    const count = await OutgoingGatePass.countDocuments(filter);
+  if (type === 'booking-gate-pass') {
+    const dispatchLedgerIds = await DispatchLedger.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const bookingFilter = {
+      dispatchLedgerId: { $in: dispatchLedgerIds },
+    };
+    const count = await Booking.countDocuments(bookingFilter);
     const next = count + 1;
     logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
   }
 
   throw new ValidationError(
-    `Invalid voucher type: ${type}. Must be one of ${VOUCHER_TYPES.join(', ')}`,
+    `Invalid voucher type: ${type}. Must be one of ${VOUCHER_TYPE_VALUES.join(', ')}`,
     'INVALID_VOUCHER_TYPE'
   );
 }

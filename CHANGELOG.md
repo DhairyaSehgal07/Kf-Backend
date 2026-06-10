@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-06-11
+
+### Added
+
+- **Booking module**
+  - New module under `src/modules/kapur/v1/booking/` (model, audit model, service, controller, routes, schema).
+  - Routes registered at `/api/v1/booking`:
+    - POST `/` – create a booking linked to `dispatchLedgerId` with `bagSizes` (`size`, `currentQuantity`, `initialQuantity`).
+    - POST `/search` – find bookings by number, matching either `gatePassNo` or `manualGatePassNumber` within the authenticated cold storage.
+    - GET `/` – paginated list with `limit`, `page`, `sortOrder` (asc/desc by gate pass number), and optional `dateFrom`/`dateTo` filters.
+    - PUT `/:id` – update booking (manual gate pass number, date, dispatch ledger, variety, bag sizes, remarks); writes audit with previous/modified state for changed fields only.
+
+- **Store Admin – Voucher number**
+  - GET voucher number endpoint now supports `incoming-gate-pass`, `grading-gate-pass`, `storage-gate-pass`, `nikasi-gate-pass`, and `booking-gate-pass` (was `storage-gate-pass` only).
+  - `booking-gate-pass` sequences by count of bookings under dispatch ledgers for the cold storage.
+
+### Changed
+
+- **Store Admin – Daybook**
+  - Daybook flow is now Incoming → Grading → Storage → Nikasi (outgoing stage removed).
+  - `outgoingPasses` always returns an empty array; `totalBagsOutgoing` is always 0.
+  - `gatePassType` filter no longer accepts `outgoing`.
+
+- **Analytics – Overview**
+  - `totalOutgoingBags` always returns 0 (outgoing gate pass module removed).
+
+- **Storage Gate Pass – Model**
+  - Removed optional `generation` field.
+
+- **Sync Indexes Script**
+  - Added `Booking`, `BookingAudit`, and `DispatchLedger` models; removed `OutgoingGatePass`.
+
+### Removed
+
+- **Outgoing Gate Pass module**
+  - Removed entire module and `/api/v1/outgoing-gate-pass` route registration.
+
+---
+
 ## [1.22.0] - 2026-05-30
 
 ### Added

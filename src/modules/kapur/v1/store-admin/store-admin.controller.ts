@@ -9,7 +9,7 @@ import {
   loginStoreAdmin,
   logoutStoreAdmin,
   getNextVoucherNumber,
-  type VoucherType,
+  type DaybookGatePassType,
 } from './store-admin.service.js';
 import {
   CreateStoreAdminInput,
@@ -212,35 +212,17 @@ export async function getDaybookHandler(
     const page = query.page ?? 1;
     const sortOrder = query.sortOrder ?? 'desc';
     const gatePassType = query.gatePassType;
-    const gatePassTypes =
+    const gatePassTypes: DaybookGatePassType[] | undefined =
       gatePassType == null
         ? undefined
         : Array.isArray(gatePassType)
-          ? (gatePassType as (
-              | 'incoming'
-              | 'grading'
-              | 'storage'
-              | 'nikasi'
-              | 'outgoing'
-            )[])
+          ? (gatePassType as DaybookGatePassType[])
           : ((gatePassType as string)
               .split(',')
               .map((t) => t.trim().toLowerCase())
               .filter((t) =>
-                [
-                  'incoming',
-                  'grading',
-                  'storage',
-                  'nikasi',
-                  'outgoing',
-                ].includes(t)
-              ) as (
-              | 'incoming'
-              | 'grading'
-              | 'storage'
-              | 'nikasi'
-              | 'outgoing'
-            )[]);
+                ['incoming', 'grading', 'storage', 'nikasi'].includes(t)
+              ) as DaybookGatePassType[]);
 
     const result = await getDaybook(
       coldStorageId,
@@ -688,7 +670,7 @@ export async function getNextVoucherNumberHandler(
 
     const nextVoucherNumber = await getNextVoucherNumber(
       coldStorageId,
-      request.query.type as VoucherType,
+      request.query.type,
       request.log
     );
 

@@ -4,7 +4,6 @@ import { IncomingGatePass } from '../incoming-gate-pass/incoming-gate-pass.model
 import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js';
 import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
-import { OutgoingGatePass } from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
 import { ValidationError, AppError } from '../../../../utils/errors.js';
 import { calculateGradingNetWeightKg } from '../../../../utils/calculations.js';
@@ -36,7 +35,7 @@ export interface OverviewResult {
  * - totalUngradedBags / totalUngradedWeight: incoming vouchers that have no grading voucher associated (same weight formula as incoming)
  * - totalBagsStored: sum of bagSizes[].initialQuantity across all storage gate passes
  * - totalBagsDispatched: sum of bagSize[].quantityIssued across nikasi (dispatch) gate passes
- * - totalOutgoingBags: sum of orderDetails[].quantityIssued across outgoing gate passes
+ * - totalOutgoingBags: always 0 (outgoing gate pass module removed)
  */
 export async function getOverview(
   coldStorageId: string,
@@ -113,9 +112,6 @@ export async function getOverview(
     const matchStorage: Record<string, unknown> = {
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
     };
-    const matchOutgoing: Record<string, unknown> = {
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
-    };
     const matchNikasi: Record<string, unknown> = {
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
     };
@@ -124,8 +120,6 @@ export async function getOverview(
       start.setUTCHours(0, 0, 0, 0);
       matchStorage.date = matchStorage.date ?? {};
       (matchStorage.date as Record<string, unknown>).$gte = start;
-      matchOutgoing.date = matchOutgoing.date ?? {};
-      (matchOutgoing.date as Record<string, unknown>).$gte = start;
       matchNikasi.date = matchNikasi.date ?? {};
       (matchNikasi.date as Record<string, unknown>).$gte = start;
     }
@@ -134,8 +128,6 @@ export async function getOverview(
       end.setUTCHours(23, 59, 59, 999);
       matchStorage.date = matchStorage.date ?? {};
       (matchStorage.date as Record<string, unknown>).$lte = end;
-      matchOutgoing.date = matchOutgoing.date ?? {};
-      (matchOutgoing.date as Record<string, unknown>).$lte = end;
       matchNikasi.date = matchNikasi.date ?? {};
       (matchNikasi.date as Record<string, unknown>).$lte = end;
     }
@@ -278,21 +270,7 @@ export async function getOverview(
     ]);
     const totalBagsStored = storageAgg?.totalBagsStored ?? 0;
 
-    // Outgoing gate pass: sum of orderDetails[].quantityIssued (total outgoing bags)
-    const [outgoingAgg] = await OutgoingGatePass.aggregate<{
-      totalOutgoingBags: number;
-    }>([
-      { $match: matchOutgoing },
-      { $unwind: '$orderDetails' },
-      {
-        $group: {
-          _id: null,
-          totalOutgoingBags: { $sum: '$orderDetails.quantityIssued' },
-        },
-      },
-      { $project: { _id: 0, totalOutgoingBags: 1 } },
-    ]);
-    const totalOutgoingBags = outgoingAgg?.totalOutgoingBags ?? 0;
+    const totalOutgoingBags = 0;
 
     // Nikasi gate pass: sum of bagSize[].quantityIssued (bags dispatched)
     const [nikasiAgg] = await NikasiGatePass.aggregate<{
