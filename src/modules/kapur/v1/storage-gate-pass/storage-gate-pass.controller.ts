@@ -3,6 +3,7 @@ import {
   createStorageGatePass,
   getStorageGatePassAuditsByColdStorage,
   getPaginatedStorageGatePassesByColdStorage,
+  getStorageGatePassesByFarmerStorageLinkId,
   getStorageGatePassReport,
   searchStorageGatePassesByNumber,
   updateStorageGatePass,
@@ -12,6 +13,8 @@ import {
   CreateStorageGatePassInput,
   GetStorageGatePassAuditsByColdStorageQuery,
   GetStorageGatePassReportQuery,
+  GetStorageGatePassesByFarmerStorageLinkParams,
+  GetStorageGatePassesByFarmerStorageLinkQuery,
   updateStorageGatePassSchema,
   UpdateStorageGatePassInput,
   UpdateStorageGatePassParams,
@@ -341,6 +344,44 @@ export async function updateStorageGatePassHandler(
     request.log.error(
       { error, params: request.params, body: request.body },
       'Error in updateStorageGatePassHandler'
+    );
+    return sendStorageGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for retrieving storage gate passes for a specific farmer storage link.
+ * Ensures the link belongs to the authenticated user's cold storage.
+ */
+export async function getStorageGatePassesByFarmerStorageLinkIdHandler(
+  request: FastifyRequest<{
+    Params: GetStorageGatePassesByFarmerStorageLinkParams;
+    Querystring: GetStorageGatePassesByFarmerStorageLinkQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { farmerStorageLinkId } = request.params;
+    const { sortOrder } = request.query;
+
+    const result = await getStorageGatePassesByFarmerStorageLinkId(
+      farmerStorageLinkId,
+      coldStorageId,
+      { sortOrder },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        storageGatePasses: result.storageGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, params: request.params },
+      'Error in getStorageGatePassesByFarmerStorageLinkIdHandler'
     );
     return sendStorageGatePassError(reply, error);
   }

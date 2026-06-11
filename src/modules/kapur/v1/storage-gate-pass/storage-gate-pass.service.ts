@@ -713,6 +713,77 @@ export async function getPaginatedStorageGatePassesByColdStorage(
   }
 }
 
+export interface GetStorageGatePassesByFarmerStorageLinkIdOptions {
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Retrieves all storage gate passes for a farmer storage link (no pagination).
+ * Validates that the link belongs to the given cold storage.
+ */
+export async function getStorageGatePassesByFarmerStorageLinkId(
+  farmerStorageLinkId: string,
+  coldStorageId: string,
+  options: GetStorageGatePassesByFarmerStorageLinkIdOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{ storageGatePasses: Array<Record<string, unknown>> }> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(farmerStorageLinkId)) {
+      throw new ValidationError(
+        'Invalid farmer storage link ID format',
+        'INVALID_FARMER_STORAGE_LINK_ID'
+      );
+    }
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    await assertFarmerStorageLinkInColdStorage(
+      farmerStorageLinkId,
+      coldStorageId
+    );
+
+    const sortOrder = options.sortOrder ?? 'desc';
+    const sortDir = sortOrder === 'desc' ? -1 : 1;
+
+    const storageGatePasses = await StorageGatePass.find({
+      farmerStorageLinkId: new mongoose.Types.ObjectId(farmerStorageLinkId),
+    })
+      .select('-remarks -createdBy')
+      .sort({ gatePassNo: sortDir, date: sortDir })
+      .lean();
+
+    logger?.info(
+      { farmerStorageLinkId, count: storageGatePasses.length },
+      'Retrieved storage gate passes by farmer storage link'
+    );
+
+    return {
+      storageGatePasses: storageGatePasses as unknown as Array<
+        Record<string, unknown>
+      >,
+    };
+  } catch (error) {
+    if (error instanceof ValidationError || error instanceof NotFoundError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, farmerStorageLinkId },
+      'Error retrieving storage gate passes by farmer storage link'
+    );
+
+    throw new AppError(
+      'Failed to retrieve storage gate passes',
+      500,
+      'GET_STORAGE_GATE_PASSES_BY_FARMER_STORAGE_LINK_ERROR'
+    );
+  }
+}
+
 /**
  * Retrieves all storage gate passes for a cold storage within an optional date range (no pagination).
  */

@@ -231,6 +231,35 @@ export type UpdateStorageGatePassParams = z.infer<
   typeof updateStorageGatePassSchema
 >['params'];
 
+export const getStorageGatePassesByFarmerStorageLinkSchema = z.object({
+  params: z.object({
+    farmerStorageLinkId: z
+      .string()
+      .trim()
+      .min(1, 'Farmer storage link ID is required')
+      .refine(
+        (val) => mongoose.Types.ObjectId.isValid(val),
+        'Invalid farmer storage link ID format'
+      ),
+  }),
+  querystring: z.object({
+    sortOrder: z
+      .enum(['asc', 'desc'], {
+        message: 'sortOrder must be "asc" or "desc"',
+      })
+      .optional()
+      .default('desc'),
+  }),
+});
+
+export type GetStorageGatePassesByFarmerStorageLinkParams = z.infer<
+  typeof getStorageGatePassesByFarmerStorageLinkSchema
+>['params'];
+
+export type GetStorageGatePassesByFarmerStorageLinkQuery = z.infer<
+  typeof getStorageGatePassesByFarmerStorageLinkSchema
+>['querystring'];
+
 export const getStorageGatePassAuditsByColdStorageSchema = z.object({
   querystring: z.object({
     limit: z.coerce
