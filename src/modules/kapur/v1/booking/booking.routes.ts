@@ -1,13 +1,17 @@
 import { FastifyInstance } from 'fastify';
 import {
   createBookingHandler,
+  getBookingAuditsByColdStorageHandler,
   getBookingStorageSummaryHandler,
   getBookingSummaryHandler,
   getBookingsByColdStorageHandler,
   searchBookingHandler,
   updateBookingHandler,
 } from './booking.controller.js';
-import { updateBookingSchema } from './booking.schema.js';
+import {
+  getBookingAuditsByColdStorageSchema,
+  updateBookingSchema,
+} from './booking.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 /**
@@ -24,13 +28,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         summary: 'Create booking',
         body: {
           type: 'object',
-          required: [
-            'dispatchLedgerId',
-            'gatePassNo',
-            'date',
-            'variety',
-            'bagSizes',
-          ],
+          required: ['dispatchLedgerId', 'gatePassNo', 'date', 'bagSizes'],
           properties: {
             dispatchLedgerId: {
               type: 'string',
@@ -46,10 +44,29 @@ export async function bookingRoutes(fastify: FastifyInstance) {
               format: 'date-time',
               description: 'Booking date',
             },
-            variety: { type: 'string', description: 'Variety' },
             bagSizes: {
               type: 'array',
-              items: { type: 'object', additionalProperties: true },
+              items: {
+                type: 'object',
+                required: [
+                  'size',
+                  'variety',
+                  'currentQuantity',
+                  'initialQuantity',
+                ],
+                properties: {
+                  size: { type: 'string', description: 'Bag size' },
+                  variety: { type: 'string', description: 'Variety' },
+                  currentQuantity: {
+                    type: 'number',
+                    description: 'Current quantity',
+                  },
+                  initialQuantity: {
+                    type: 'number',
+                    description: 'Initial quantity',
+                  },
+                },
+              },
               description: 'Bag sizes',
             },
             remarks: { type: 'string', description: 'Remarks' },
@@ -199,6 +216,93 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       },
     },
     searchBookingHandler as never
+  );
+
+  fastify.get(
+    '/edits',
+    {
+      schema: {
+        ...getBookingAuditsByColdStorageSchema,
+        description:
+          "Get audit records for all booking edits in the authenticated store admin's cold storage. Supports pagination (limit default 10, page). Results are sorted by newest first. Each audit entry contains previousState and modifiedState with only the fields that changed.",
+        tags: ['Booking'],
+        summary: 'Get booking edit audit trail for current cold storage',
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Items per page (default 10, max 5000)',
+            },
+            page: { type: 'number', description: 'Page number (default 1)' },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Paginated audit records for booking edits in current cold storage',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  audits: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                  pagination: {
+                    type: 'object',
+                    properties: {
+                      page: { type: 'number' },
+                      limit: { type: 'number' },
+                      total: { type: 'number' },
+                      totalPages: { type: 'number' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getBookingAuditsByColdStorageHandler as never
   );
 
   fastify.get(
@@ -497,7 +601,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       schema: {
         ...updateBookingSchema,
         description:
-          'Update a booking. Allowed fields: manualGatePassNumber, date, dispatchLedgerId, variety, bagSizes (size, currentQuantity, initialQuantity), remarks. gatePassNo cannot be changed. Creates an audit record with previousState and modifiedState containing only the fields that changed.',
+          'Update a booking. Allowed fields: manualGatePassNumber, date, dispatchLedgerId, bagSizes (size, variety, currentQuantity, initialQuantity), remarks. gatePassNo cannot be changed. Creates an audit record with previousState and modifiedState containing only the fields that changed.',
         tags: ['Booking'],
         summary: 'Update booking',
         params: {
@@ -517,14 +621,19 @@ export async function bookingRoutes(fastify: FastifyInstance) {
             },
             date: { type: 'string', format: 'date-time' },
             dispatchLedgerId: { type: 'string' },
-            variety: { type: 'string' },
             bagSizes: {
               type: 'array',
               items: {
                 type: 'object',
-                required: ['size', 'currentQuantity', 'initialQuantity'],
+                required: [
+                  'size',
+                  'variety',
+                  'currentQuantity',
+                  'initialQuantity',
+                ],
                 properties: {
                   size: { type: 'string' },
+                  variety: { type: 'string' },
                   currentQuantity: { type: 'number' },
                   initialQuantity: { type: 'number' },
                 },

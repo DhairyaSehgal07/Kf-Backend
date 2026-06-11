@@ -3,6 +3,11 @@ import mongoose from 'mongoose';
 
 const bagSizeSchema = z.object({
   size: z.string().trim().min(1, 'Size is required'),
+  variety: z
+    .string()
+    .trim()
+    .min(1, 'Variety is required')
+    .max(100, 'Variety must not exceed 100 characters'),
   currentQuantity: z.coerce
     .number()
     .int()
@@ -35,12 +40,6 @@ export const createBookingSchema = z.object({
     .optional(),
 
   date: z.coerce.date(),
-
-  variety: z
-    .string()
-    .trim()
-    .min(1, 'Variety is required')
-    .max(100, 'Variety must not exceed 100 characters'),
 
   bagSizes: z.array(bagSizeSchema).min(1, 'At least one bag size is required'),
 
@@ -92,12 +91,6 @@ export const updateBookingSchema = z.object({
           'Invalid dispatch ledger ID format'
         )
         .optional(),
-      variety: z
-        .string()
-        .trim()
-        .min(1, 'Variety is required')
-        .max(100, 'Variety must not exceed 100 characters')
-        .optional(),
       bagSizes: z
         .array(bagSizeSchema)
         .min(1, 'At least one bag size is required')
@@ -128,3 +121,25 @@ export const searchBookingSchema = z.object({
 });
 
 export type SearchBookingInput = z.infer<typeof searchBookingSchema>;
+
+export const getBookingAuditsByColdStorageSchema = z.object({
+  querystring: z.object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, 'Limit must be at least 1')
+      .max(5000, 'Limit must not exceed 5000')
+      .optional()
+      .default(10),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1, 'Page must be at least 1')
+      .optional()
+      .default(1),
+  }),
+});
+
+export type GetBookingAuditsByColdStorageQuery = z.infer<
+  typeof getBookingAuditsByColdStorageSchema
+>['querystring'];

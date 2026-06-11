@@ -10,6 +10,7 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
 
 interface IBagSize {
   size: string;
+  variety: string;
   currentQuantity: number;
   initialQuantity: number;
 }
@@ -30,7 +31,6 @@ export interface IBooking extends Document {
   manualGatePassNumber?: number;
 
   date: Date;
-  variety: string;
 
   bagSizes: IBagSize[];
 
@@ -52,6 +52,12 @@ export interface IBooking extends Document {
 const BagSizeSchema = new Schema<IBagSize>(
   {
     size: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    variety: {
       type: String,
       required: true,
       trim: true,
@@ -137,13 +143,6 @@ const BookingSchema = new Schema<IBooking>(
     date: {
       type: Date,
       required: true,
-      index: true,
-    },
-
-    variety: {
-      type: String,
-      required: true,
-      trim: true,
       index: true,
     },
 

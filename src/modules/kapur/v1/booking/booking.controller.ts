@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createBooking,
+  getBookingAuditsByColdStorage,
   getBookingSummary,
   getPaginatedBookingsByColdStorage,
   searchBookingsByNumber,
@@ -15,6 +16,7 @@ import {
   updateBookingSchema,
   UpdateBookingInput,
   UpdateBookingParams,
+  GetBookingAuditsByColdStorageQuery,
 } from './booking.schema.js';
 import {
   AppError,
@@ -52,7 +54,6 @@ export async function createBookingHandler(
     request.log.info(
       {
         bagSizesCount: request.body.bagSizes?.length ?? 0,
-        variety: request.body.variety,
         date: request.body.date,
       },
       'Create booking request'
@@ -163,6 +164,85 @@ export async function searchBookingHandler(
     request.log.error(
       { error, body: request.body },
       'Error in searchBookingHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    const statusCode = 500;
+    return reply.code(statusCode).send({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred'
+            : 'An unexpected error occurred',
+      },
+    });
+  }
+}
+
+/**
+ * Handler for retrieving booking audit records for current cold storage.
+ */
+export async function getBookingAuditsByColdStorageHandler(
+  request: FastifyRequest<{
+    Querystring: GetBookingAuditsByColdStorageQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const limit = request.query.limit ?? 10;
+    const page = request.query.page ?? 1;
+
+    const result = await getBookingAuditsByColdStorage(
+      coldStorageId,
+      { limit, page },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        audits: result.audits,
+        pagination: result.pagination,
+      },
+    });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getBookingAuditsByColdStorageHandler'
     );
 
     if (error instanceof UnauthorizedError) {

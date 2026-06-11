@@ -20,7 +20,6 @@ const BOOKING_EDITABLE_FIELDS = [
   'manualGatePassNumber',
   'date',
   'dispatchLedgerId',
-  'variety',
   'bagSizes',
   'remarks',
 ] as const;
@@ -129,6 +128,120 @@ function buildBookingAuditDiff(
   return { previousState, modifiedState };
 }
 
+function toObjectIdString(value: unknown): string | undefined {
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (
+    value &&
+    typeof value === 'object' &&
+    '_id' in value &&
+    (value as { _id?: unknown })._id instanceof mongoose.Types.ObjectId
+  ) {
+    return (value as { _id: mongoose.Types.ObjectId })._id.toString();
+  }
+
+  if (typeof value === 'string' && mongoose.Types.ObjectId.isValid(value)) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function collectDispatchLedgerIdsFromAuditState(
+  state: BookingAuditState | undefined,
+  dispatchLedgerIds: Set<string>
+): void {
+  if (!state || typeof state !== 'object') {
+    return;
+  }
+
+  const dispatchLedgerId = toObjectIdString(state.dispatchLedgerId);
+  if (dispatchLedgerId) {
+    dispatchLedgerIds.add(dispatchLedgerId);
+  }
+}
+
+function populateAuditStateDispatchLedger(
+  state: unknown,
+  dispatchLedgerMap: Map<string, Record<string, unknown>>
+): unknown {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) {
+    return state;
+  }
+
+  const auditState = state as Record<string, unknown>;
+  const dispatchLedgerId = toObjectIdString(auditState.dispatchLedgerId);
+  if (!dispatchLedgerId) {
+    return auditState;
+  }
+
+  const dispatchLedger = dispatchLedgerMap.get(dispatchLedgerId);
+  if (!dispatchLedger) {
+    return auditState;
+  }
+
+  return {
+    ...auditState,
+    dispatchLedgerId: dispatchLedger,
+  };
+}
+
+async function buildAuditDispatchLedgerMap(
+  audits: Array<Record<string, unknown>>
+): Promise<Map<string, Record<string, unknown>>> {
+  const dispatchLedgerIds = new Set<string>();
+
+  for (const audit of audits) {
+    collectDispatchLedgerIdsFromAuditState(
+      audit.previousState as BookingAuditState | undefined,
+      dispatchLedgerIds
+    );
+    collectDispatchLedgerIdsFromAuditState(
+      audit.modifiedState as BookingAuditState | undefined,
+      dispatchLedgerIds
+    );
+  }
+
+  if (dispatchLedgerIds.size === 0) {
+    return new Map();
+  }
+
+  const dispatchLedgers = await DispatchLedger.find({
+    _id: {
+      $in: [...dispatchLedgerIds].map((id) => new mongoose.Types.ObjectId(id)),
+    },
+  })
+    .select('name address mobileNumber')
+    .lean();
+
+  return new Map(
+    dispatchLedgers.map((ledger) => [
+      (ledger._id as mongoose.Types.ObjectId).toString(),
+      ledger as Record<string, unknown>,
+    ])
+  );
+}
+
+async function formatBookingAuditsForResponse(
+  audits: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  const dispatchLedgerMap = await buildAuditDispatchLedgerMap(audits);
+
+  return audits.map((audit) => ({
+    ...audit,
+    previousState: populateAuditStateDispatchLedger(
+      audit.previousState,
+      dispatchLedgerMap
+    ),
+    modifiedState: populateAuditStateDispatchLedger(
+      audit.modifiedState,
+      dispatchLedgerMap
+    ),
+  }));
+}
+
 async function assertDispatchLedgerInColdStorage(
   dispatchLedgerId: string,
   coldStorageId: string
@@ -196,7 +309,6 @@ async function createSingleBooking(
     gatePassNo,
     manualGatePassNumber,
     date,
-    variety,
     bagSizes,
     remarks,
     idempotencyKey,
@@ -256,9 +368,9 @@ async function createSingleBooking(
     gatePassNo,
     ...(manualGatePassNumber !== undefined && { manualGatePassNumber }),
     date,
-    variety,
     bagSizes: bagSizes.map((bs) => ({
       size: bs.size,
+      variety: bs.variety,
       currentQuantity: bs.currentQuantity,
       initialQuantity: bs.initialQuantity,
     })),
@@ -298,7 +410,7 @@ export async function createBooking(
 
   try {
     logger?.info(
-      { variety: payload.variety, date: payload.date },
+      { bagSizesCount: payload.bagSizes.length, date: payload.date },
       'Starting booking create'
     );
 
@@ -701,7 +813,7 @@ export async function getBookingSummary(
     (match.date as Record<string, unknown>).$lte = end;
   }
 
-  const docs = await Booking.find(match).select('variety bagSizes').lean();
+  const docs = await Booking.find(match).select('bagSizes').lean();
 
   const byVariety = new Map<
     string,
@@ -709,8 +821,8 @@ export async function getBookingSummary(
   >();
 
   for (const doc of docs) {
-    const variety = doc.variety?.trim() || 'Unspecified';
     for (const bs of doc.bagSizes ?? []) {
+      const variety = bs.variety?.trim() || 'Unspecified';
       const size = bs.size?.trim() || '';
       const initial = Number(bs.initialQuantity) || 0;
       const current = Number(bs.currentQuantity) || 0;
@@ -762,4 +874,99 @@ export async function getBookingSummary(
   );
 
   return result;
+}
+
+/**
+ * Retrieves booking audit records for a cold storage.
+ */
+export async function getBookingAuditsByColdStorage(
+  coldStorageId: string,
+  options: { limit?: number; page?: number } = {},
+  logger?: FastifyBaseLogger
+): Promise<{
+  audits: Array<Record<string, unknown>>;
+  pagination: BookingsPagination;
+}> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const limit = Math.min(Math.max(options.limit ?? 10, 1), 5000);
+    const page = Math.max(options.page ?? 1, 1);
+
+    const dispatchLedgerIds =
+      await getDispatchLedgerIdsForColdStorage(coldStorageId);
+
+    const emptyPagination = { page, limit, total: 0, totalPages: 0 };
+
+    if (dispatchLedgerIds.length === 0) {
+      return { audits: [], pagination: emptyPagination };
+    }
+
+    const bookingIds = await Booking.find({
+      dispatchLedgerId: { $in: dispatchLedgerIds },
+    })
+      .distinct('_id')
+      .lean();
+
+    if (bookingIds.length === 0) {
+      return { audits: [], pagination: emptyPagination };
+    }
+
+    const filter = {
+      bookingId: { $in: bookingIds },
+    };
+
+    const [total, audits] = await Promise.all([
+      BookingAudit.countDocuments(filter),
+      BookingAudit.find(filter)
+        .populate({
+          path: 'bookingId',
+          select: 'gatePassNo manualGatePassNumber dispatchLedgerId',
+          populate: {
+            path: 'dispatchLedgerId',
+            select: 'name address mobileNumber',
+          },
+        })
+        .populate('editedById', 'name mobileNumber')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const formattedAudits = await formatBookingAuditsForResponse(
+      audits as unknown as Array<Record<string, unknown>>
+    );
+
+    logger?.info(
+      { coldStorageId, count: formattedAudits.length, total, page, limit },
+      'Retrieved booking audits by cold storage'
+    );
+
+    return {
+      audits: formattedAudits,
+      pagination: { page, limit, total, totalPages },
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving booking audits by cold storage'
+    );
+
+    throw new AppError(
+      'Failed to retrieve booking audits',
+      500,
+      'GET_BOOKING_AUDITS_ERROR'
+    );
+  }
 }
