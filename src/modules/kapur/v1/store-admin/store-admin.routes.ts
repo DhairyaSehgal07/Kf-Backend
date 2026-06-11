@@ -109,7 +109,7 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
       schema: {
         ...getVoucherNumberQuerySchema,
         description:
-          'Get the next voucher (gate pass) number for the given voucher type (incoming-gate-pass, grading-gate-pass, storage-gate-pass, nikasi-gate-pass, booking-gate-pass), scoped to the authenticated user’s cold storage',
+          'Get the next voucher (gate pass) number for the given voucher type (incoming-gate-pass, grading-gate-pass, storage-gate-pass, nikasi-gate-pass, outgoing-gate-pass, transfer-stock-gate-pass, booking-gate-pass), scoped to the authenticated user’s cold storage',
         tags: ['Store Admin'],
         summary: 'Get voucher number',
         response: {
@@ -169,127 +169,68 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
     getNextVoucherNumberHandler as never
   );
 
-  // Get daybook (each incoming gate pass with attached passes, farmer populated, and summaries)
+  // Get daybook (merged storage + outgoing gate pass ledger)
   fastify.get(
     '/daybook',
     {
       schema: {
         ...getDaybookQuerySchema,
         description:
-          'Get daybook: for each incoming gate pass, attached grading/storage/nikasi/outgoing passes, farmer populated, and pre-computed bag summaries. Supports pagination (limit default 10, page), sorting by date (sortOrder: asc|desc), and filtering by stage (gatePassType: incoming, grading, storage, nikasi, outgoing). Filter is "up to" that stage: e.g. incoming = only vouchers with incoming (no grading/storage/nikasi/outgoing); storage = vouchers that have reached storage but not nikasi/outgoing. Flow: Incoming → Grading → Storage → Nikasi → Outgoing.',
+          'Get daybook: paginated ledger of storage (incoming) and active outgoing gate passes for the cold storage. Merged list sorted by createdAt. Query type=all|incoming|outgoing, sortBy=latest|oldest, page, limit.',
         tags: ['Store Admin'],
         summary: 'Get daybook',
         querystring: {
           type: 'object',
           properties: {
+            type: {
+              type: 'string',
+              enum: ['all', 'incoming', 'outgoing'],
+              description:
+                'all = merged storage + outgoing; incoming = storage only; outgoing = outgoing only (default all)',
+            },
+            sortBy: {
+              type: 'string',
+              enum: ['latest', 'oldest'],
+              description: 'Sort by createdAt (default latest)',
+            },
             limit: {
               type: 'number',
               description: 'Items per page (default 10, max 100)',
             },
             page: { type: 'number', description: 'Page number (default 1)' },
-            sortOrder: {
-              type: 'string',
-              enum: ['asc', 'desc'],
-              description: 'Sort by date (default desc)',
-            },
-            gatePassType: {
-              type: 'string',
-              description:
-                'Filter by stage "up to" (incoming|grading|storage|nikasi|outgoing). Returns vouchers that have reached this stage and all prior stages but no later stage. E.g. storage = has incoming+grading+storage, no nikasi/outgoing.',
-            },
           },
         },
         response: {
           200: {
             description:
-              'Daybook: array of entries (one per incoming) with attached passes, summaries, and pagination',
+              'Daybook ledger entries with farmer details populated and pagination metadata',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                  properties: {
+                    passKind: {
+                      type: 'string',
+                      enum: ['storage', 'outgoing'],
+                    },
+                  },
+                },
+              },
+              pagination: {
                 type: 'object',
                 properties: {
-                  daybook: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        incoming: {
-                          type: 'object',
-                          additionalProperties: true,
-                          description:
-                            'Incoming gate pass (includes manualGatePassNumber, category when set)',
-                          properties: {
-                            category: {
-                              type: 'string',
-                              description:
-                                'Incoming category (e.g. Own Stock, Contract Farming)',
-                            },
-                          },
-                        },
-                        farmer: {
-                          type: 'object',
-                          additionalProperties: true,
-                          nullable: true,
-                        },
-                        gradingPasses: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            additionalProperties: true,
-                            description:
-                              'Each item includes manualGatePassNumber when set',
-                          },
-                        },
-                        storagePasses: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            additionalProperties: true,
-                            description:
-                              'Each item includes manualGatePassNumber, generation, and stage when set',
-                          },
-                        },
-                        nikasiPasses: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            additionalProperties: true,
-                            description:
-                              'Each item includes manualGatePassNumber when set',
-                          },
-                        },
-                        outgoingPasses: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            additionalProperties: true,
-                            description:
-                              'Each item includes manualGatePassNumber when set',
-                          },
-                        },
-                        summaries: {
-                          type: 'object',
-                          properties: {
-                            totalBagsIncoming: { type: 'number' },
-                            totalBagsGraded: { type: 'number' },
-                            totalBagsStored: { type: 'number' },
-                            totalBagsNikasi: { type: 'number' },
-                            totalBagsOutgoing: { type: 'number' },
-                          },
-                        },
-                      },
-                    },
-                  },
-                  pagination: {
-                    type: 'object',
-                    properties: {
-                      page: { type: 'number' },
-                      limit: { type: 'number' },
-                      total: { type: 'number' },
-                      totalPages: { type: 'number' },
-                    },
-                  },
+                  currentPage: { type: 'number' },
+                  totalPages: { type: 'number' },
+                  totalItems: { type: 'number' },
+                  itemsPerPage: { type: 'number' },
+                  hasNextPage: { type: 'boolean' },
+                  hasPreviousPage: { type: 'boolean' },
+                  nextPage: { type: 'number', nullable: true },
+                  previousPage: { type: 'number', nullable: true },
                 },
               },
             },

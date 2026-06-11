@@ -238,6 +238,9 @@ StorageGatePassSchema.index(
 // Farmer storage link lookup
 StorageGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
 
+// Daybook: sort by createdAt within a farmer link
+StorageGatePassSchema.index({ farmerStorageLinkId: 1, createdAt: -1 });
+
 // Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
 StorageGatePassSchema.index(
   { farmerStorageLinkId: 1, gatePassNo: 1 },

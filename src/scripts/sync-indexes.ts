@@ -30,6 +30,9 @@ import { Temperature } from '../modules/kapur/v1/temperature/temperature.model.j
 import { DispatchLedger } from '../modules/kapur/v1/dispatch-ledger/dispatch-ledger.model.js';
 import { Booking } from '../modules/kapur/v1/booking/booking.model.js';
 import { BookingAudit } from '../modules/kapur/v1/booking/booking-audit.model.js';
+import { OutgoingGatePass } from '../modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.model.js';
+import { OutgoingGatePassAudit } from '../modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass-audit.model.js';
+import { TransferStockGatePass } from '../modules/kapur/v1/transfer-stock/transfer-stock.model.js';
 
 const MODELS = [
   ColdStorage,
@@ -49,6 +52,9 @@ const MODELS = [
   DispatchLedger,
   Booking,
   BookingAudit,
+  OutgoingGatePass,
+  OutgoingGatePassAudit,
+  TransferStockGatePass,
 ] as const;
 
 async function syncIndexes(): Promise<void> {

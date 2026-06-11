@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.23.0] - 2026-06-11
+## [1.23.0] - 2026-06-12
 
 ### Added
 
@@ -17,30 +17,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - GET `/` – paginated list with `limit`, `page`, `sortOrder` (asc/desc by gate pass number), and optional `dateFrom`/`dateTo` filters.
     - PUT `/:id` – update booking (manual gate pass number, date, dispatch ledger, variety, bag sizes, remarks); writes audit with previous/modified state for changed fields only.
 
+- **Outgoing Gate Pass module**
+  - New module under `src/modules/kapur/v1/outgoing-gate-pass/` (model, audit model, service, controller, routes, schema).
+  - Routes registered at `/api/v1/outgoing-gate-pass`:
+    - POST `/` – create an outgoing gate pass from storage gate pass allocations; stores storage snapshots for cancel/restore; supports `replacesOutgoingGatePassId` and `idempotencyKey`.
+    - POST `/:outgoingGatePassId/cancel` – cancel an active pass, restore bag quantities from snapshots, and write an audit entry.
+
+- **Transfer Stock module**
+  - New module under `src/modules/kapur/v1/transfer-stock/` (model, service, controller, routes, schema).
+  - Routes registered at `/api/v1/transfer-stock`:
+    - POST `/` – transfer stock between farmer storage links (deducts source storage, creates destination storage + source outgoing passes, records transfer).
+    - GET `/` – paginated list with `limit`, `page`, `sortOrder`, optional `gatePassNo` search, and `dateFrom`/`dateTo` filters.
+    - GET `/report` – flat report rows and TanStack Table column metadata for the authenticated cold storage.
+
 - **Store Admin – Voucher number**
-  - GET voucher number endpoint now supports `incoming-gate-pass`, `grading-gate-pass`, `storage-gate-pass`, `nikasi-gate-pass`, and `booking-gate-pass` (was `storage-gate-pass` only).
-  - `booking-gate-pass` sequences by count of bookings under dispatch ledgers for the cold storage.
+  - GET voucher number endpoint now supports `incoming-gate-pass`, `grading-gate-pass`, `storage-gate-pass`, `nikasi-gate-pass`, `outgoing-gate-pass`, `transfer-stock-gate-pass`, and `booking-gate-pass`.
 
 ### Changed
 
 - **Store Admin – Daybook**
-  - Daybook flow is now Incoming → Grading → Storage → Nikasi (outgoing stage removed).
-  - `outgoingPasses` always returns an empty array; `totalBagsOutgoing` is always 0.
-  - `gatePassType` filter no longer accepts `outgoing`.
-
-- **Analytics – Overview**
-  - `totalOutgoingBags` always returns 0 (outgoing gate pass module removed).
+  - Replaced incoming-centric daybook with a merged storage + outgoing ledger sorted by `createdAt`.
+  - Query params: `type` (`all` | `incoming` | `outgoing`), `sortBy` (`latest` | `oldest`), `page`, `limit`.
+  - Response shape: `{ data: [...], pagination }` with `passKind` (`storage` | `outgoing`) on each entry and farmer details populated.
 
 - **Storage Gate Pass – Model**
-  - Removed optional `generation` field.
+  - Added index on `{ farmerStorageLinkId: 1, createdAt: -1 }` for daybook sorting.
 
 - **Sync Indexes Script**
-  - Added `Booking`, `BookingAudit`, and `DispatchLedger` models; removed `OutgoingGatePass`.
-
-### Removed
-
-- **Outgoing Gate Pass module**
-  - Removed entire module and `/api/v1/outgoing-gate-pass` route registration.
+  - Added `Booking`, `BookingAudit`, `DispatchLedger`, `OutgoingGatePass`, `OutgoingGatePassAudit`, and `TransferStockGatePass` models.
 
 ---
 

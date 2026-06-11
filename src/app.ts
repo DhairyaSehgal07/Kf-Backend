@@ -17,6 +17,8 @@ import { analyticsRoutes } from './modules/kapur/v1/analytics/analytics.routes.j
 import { temperatureRoutes } from './modules/kapur/v1/temperature/temperature.routes.js';
 import { dispatchLedgerRoutes } from './modules/kapur/v1/dispatch-ledger/dispatch-ledger.routes.js';
 import { bookingRoutes } from './modules/kapur/v1/booking/booking.routes.js';
+import { outgoingGatePassRoutes } from './modules/kapur/v1/outgoing-gate-pass/outgoing-gate-pass.routes.js';
+import { transferStockRoutes } from './modules/kapur/v1/transfer-stock/transfer-stock.routes.js';
 config();
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -120,6 +122,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register nikasi gate pass routes
   await fastify.register(nikasiGatePassRoutes, {
     prefix: '/api/v1/nikasi-gate-pass',
+  });
+
+  // Register outgoing gate pass routes
+  await fastify.register(outgoingGatePassRoutes, {
+    prefix: '/api/v1/outgoing-gate-pass',
+  });
+
+  // Register transfer stock routes
+  await fastify.register(transferStockRoutes, {
+    prefix: '/api/v1/transfer-stock',
   });
 
   // Register analytics routes

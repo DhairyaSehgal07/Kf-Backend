@@ -170,6 +170,8 @@ export const VOUCHER_TYPE_VALUES = [
   'grading-gate-pass',
   'storage-gate-pass',
   'nikasi-gate-pass',
+  'outgoing-gate-pass',
+  'transfer-stock-gate-pass',
   'booking-gate-pass',
 ] as const;
 
@@ -187,16 +189,25 @@ export type GetVoucherNumberQuery = z.infer<
   typeof getVoucherNumberQuerySchema
 >['querystring'];
 
-/** Allowed gate pass types for daybook filter */
-export const DAYBOOK_GATE_PASS_TYPES = [
-  'incoming',
-  'grading',
-  'storage',
-  'nikasi',
-] as const;
+/** Daybook list type filter: all = merged storage + outgoing */
+export const DAYBOOK_LIST_TYPES = ['all', 'incoming', 'outgoing'] as const;
+
+export type DaybookListType = (typeof DAYBOOK_LIST_TYPES)[number];
 
 export const getDaybookQuerySchema = z.object({
   querystring: z.object({
+    type: z
+      .enum(DAYBOOK_LIST_TYPES, {
+        message: `Type must be one of: ${DAYBOOK_LIST_TYPES.join(', ')}`,
+      })
+      .optional()
+      .default('all'),
+    sortBy: z
+      .enum(['latest', 'oldest'], {
+        message: 'sortBy must be "latest" or "oldest"',
+      })
+      .optional()
+      .default('latest'),
     limit: z.coerce
       .number()
       .int()
@@ -210,27 +221,6 @@ export const getDaybookQuerySchema = z.object({
       .min(1, 'Page must be at least 1')
       .optional()
       .default(1),
-    sortOrder: z
-      .enum(['asc', 'desc'], {
-        message: 'sortOrder must be "asc" or "desc"',
-      })
-      .optional()
-      .default('desc'),
-    gatePassType: z
-      .union([z.string(), z.array(z.string())])
-      .optional()
-      .transform((s) => {
-        if (s == null) return undefined;
-        const arr = Array.isArray(s) ? s : [s];
-        const types = arr
-          .flatMap((x) => x.split(',').map((t) => t.trim().toLowerCase()))
-          .filter((t) =>
-            DAYBOOK_GATE_PASS_TYPES.includes(
-              t as (typeof DAYBOOK_GATE_PASS_TYPES)[number]
-            )
-          ) as (typeof DAYBOOK_GATE_PASS_TYPES)[number][];
-        return types.length ? types : undefined;
-      }),
   }),
 });
 

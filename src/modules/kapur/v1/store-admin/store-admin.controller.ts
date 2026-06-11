@@ -9,7 +9,6 @@ import {
   loginStoreAdmin,
   logoutStoreAdmin,
   getNextVoucherNumber,
-  type DaybookGatePassType,
 } from './store-admin.service.js';
 import {
   CreateStoreAdminInput,
@@ -20,6 +19,7 @@ import {
   CheckMobileNumberQuery,
   LoginStoreAdminInput,
   GetVoucherNumberQuery,
+  GetDaybookQuery,
 } from './store-admin.schema.js';
 import {
   AppError,
@@ -174,18 +174,10 @@ export async function getStoreAdminByIdHandler(
 }
 
 /**
- * Handler for retrieving daybook (all gate passes) for the authenticated user's cold storage.
- * Supports pagination (limit, page), sorting by date (sortOrder), and filtering by gate pass type.
+ * Handler for retrieving the storage + outgoing daybook ledger for the authenticated cold storage.
  */
 export async function getDaybookHandler(
-  request: FastifyRequest<{
-    Querystring: {
-      limit?: number;
-      page?: number;
-      sortOrder?: 'asc' | 'desc';
-      gatePassType?: string | string[];
-    };
-  }>,
+  request: FastifyRequest<{ Querystring: GetDaybookQuery }>,
   reply: FastifyReply
 ) {
   try {
@@ -207,37 +199,18 @@ export async function getDaybookHandler(
       });
     }
 
-    const query = request.query;
-    const limit = query.limit ?? 10;
-    const page = query.page ?? 1;
-    const sortOrder = query.sortOrder ?? 'desc';
-    const gatePassType = query.gatePassType;
-    const gatePassTypes: DaybookGatePassType[] | undefined =
-      gatePassType == null
-        ? undefined
-        : Array.isArray(gatePassType)
-          ? (gatePassType as DaybookGatePassType[])
-          : ((gatePassType as string)
-              .split(',')
-              .map((t) => t.trim().toLowerCase())
-              .filter((t) =>
-                ['incoming', 'grading', 'storage', 'nikasi'].includes(t)
-              ) as DaybookGatePassType[]);
+    const { type, sortBy, limit, page } = request.query;
 
     const result = await getDaybook(
       coldStorageId,
-      {
-        limit,
-        page,
-        sortOrder,
-        gatePassTypes: gatePassTypes?.length ? gatePassTypes : undefined,
-      },
+      { type, sortBy, limit, page },
       request.log
     );
 
     return reply.send({
       success: true,
-      data: result,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     request.log.error({ error }, 'Error in getDaybookHandler');
