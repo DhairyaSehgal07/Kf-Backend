@@ -261,6 +261,7 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
             'destinationStorageGatePassNo',
             'date',
             'variety',
+            'category',
             'from',
             'to',
             'storageGatePasses',
@@ -295,10 +296,18 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
               description: 'Transfer date',
             },
             variety: { type: 'string', description: 'Variety' },
-            storageCategory: {
+            category: {
               type: 'string',
+              enum: [
+                'Own Stock',
+                'Contract Farming',
+                'Fazalpur',
+                'Purchases-Apr',
+                'Conversion',
+                'Transfer From Stores',
+              ],
               description:
-                'Storage category for the destination storage gate pass (defaults to Transfer From Stores)',
+                'Category for the destination storage gate pass (incoming side)',
             },
             stage: { type: 'string', description: 'Optional stage' },
             from: {

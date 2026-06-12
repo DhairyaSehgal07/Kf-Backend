@@ -60,7 +60,7 @@ function sendNikasiGatePassError(reply: FastifyReply, error: unknown) {
 }
 
 /**
- * Handler for searching nikasi gate passes by gate pass number or manual gate pass number.
+ * Handler for searching nikasi gate passes by gate pass, bill, or bilti numbers.
  */
 export async function searchNikasiGatePassHandler(
   request: FastifyRequest<{ Body: SearchNikasiGatePassInput }>,

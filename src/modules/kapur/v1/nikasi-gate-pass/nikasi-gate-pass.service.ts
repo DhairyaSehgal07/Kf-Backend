@@ -148,7 +148,8 @@ export async function getPaginatedNikasiGatePassesByColdStorage(
 
 /**
  * Searches nikasi gate passes within a cold storage by exact gate pass number.
- * Matches documents where `number` equals either `gatePassNo` or `manualGatePassNumber`.
+ * Matches documents where `number` equals gatePassNo, manualGatePassNumber,
+ * billNumber, bitliNumber, billBook, or biltiBook.
  */
 export async function searchNikasiGatePassesByNumber(
   coldStorageId: string,
@@ -179,7 +180,16 @@ export async function searchNikasiGatePassesByNumber(
     const filter = {
       $and: [
         { farmerStorageLinkId: { $in: farmerStorageLinkIds } },
-        { $or: [{ gatePassNo: number }, { manualGatePassNumber: number }] },
+        {
+          $or: [
+            { gatePassNo: number },
+            { manualGatePassNumber: number },
+            { billNumber: number },
+            { bitliNumber: number },
+            { billBook: number },
+            { biltiBook: number },
+          ],
+        },
       ],
     };
 

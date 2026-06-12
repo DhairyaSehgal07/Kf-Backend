@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createOutgoingGatePass,
   cancelOutgoingGatePass,
+  updateOutgoingGatePass,
 } from './outgoing-gate-pass.service.js';
 import {
   createOutgoingGatePassSchema,
@@ -9,6 +10,9 @@ import {
   cancelOutgoingGatePassBodySchema,
   CancelOutgoingGatePassParams,
   CancelOutgoingGatePassInput,
+  updateOutgoingGatePassBodySchema,
+  UpdateOutgoingGatePassParams,
+  UpdateOutgoingGatePassInput,
 } from './outgoing-gate-pass.schema.js';
 import {
   AppError,
@@ -110,6 +114,91 @@ export async function createOutgoingGatePassHandler(
     }
 
     if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    const statusCode = 500;
+    return reply.code(statusCode).send({
+      status: 'error',
+      statusCode,
+      errorCode: 'INTERNAL_SERVER_ERROR',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred'
+          : 'An unexpected error occurred',
+    });
+  }
+}
+
+export async function updateOutgoingGatePassHandler(
+  request: FastifyRequest<{
+    Params: UpdateOutgoingGatePassParams;
+    Body: UpdateOutgoingGatePassInput;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    request.log.info(
+      { outgoingGatePassId: request.params.outgoingGatePassId },
+      'Update outgoing gate pass request'
+    );
+
+    const body = updateOutgoingGatePassBodySchema.parse(request.body);
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const ipAddress =
+      request.ip ||
+      request.headers['x-forwarded-for']?.toString() ||
+      request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+
+    const result = await updateOutgoingGatePass(
+      coldStorageId,
+      request.params.outgoingGatePassId,
+      body,
+      request.log,
+      storeAdminId,
+      { ipAddress, userAgent }
+    );
+
+    return reply.send({
+      status: 'Success',
+      message: 'Outgoing gate pass updated successfully.',
+      data: result,
+    });
+  } catch (error) {
+    request.log.error(
+      {
+        error,
+        outgoingGatePassId: request.params.outgoingGatePassId,
+        body: request.body,
+      },
+      'Error in updateOutgoingGatePassHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (
+      error instanceof ConflictError ||
+      error instanceof ValidationError ||
+      error instanceof NotFoundError ||
+      error instanceof AppError
+    ) {
       return reply.code(error.statusCode).send({
         status: 'error',
         statusCode: error.statusCode,

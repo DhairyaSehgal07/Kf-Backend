@@ -20,6 +20,8 @@ export interface INikasiGatePass extends Document {
 
   billNumber: number;
   bitliNumber: number;
+  billBook?: number;
+  biltiBook?: number;
   category: string;
 
   date: Date;
@@ -118,6 +120,14 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
     bitliNumber: {
       type: Number,
       required: true,
+    },
+
+    billBook: {
+      type: Number,
+    },
+
+    biltiBook: {
+      type: Number,
     },
 
     category: {

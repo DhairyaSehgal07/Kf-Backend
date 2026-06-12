@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import {
   createOutgoingGatePassHandler,
   cancelOutgoingGatePassHandler,
+  updateOutgoingGatePassHandler,
 } from './outgoing-gate-pass.controller.js';
 import { cancelOutgoingGatePassParamsSchema } from './outgoing-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
@@ -52,6 +53,11 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
               type: 'string',
               description: 'Truck number (optional)',
             },
+            billNumber: { type: 'number', description: 'Bill number' },
+            biltiNumber: { type: 'number', description: 'Bilti number' },
+            billBook: { type: 'number', description: 'Bill book number' },
+            biltiBook: { type: 'number', description: 'Bilti book number' },
+            category: { type: 'string', description: 'Category' },
             storageGatePasses: {
               type: 'array',
               description: 'Storage gate passes with allocations',
@@ -164,6 +170,134 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createOutgoingGatePassHandler as never
+  );
+
+  fastify.put(
+    '/:outgoingGatePassId',
+    {
+      schema: {
+        description:
+          'Update an active outgoing gate pass. Allowed fields: date, manualGatePassNumber, from, to, remarks, truckNumber, billNumber, biltiNumber, billBook, biltiBook, category. gatePassNo, variety, allocations, and other stock-related fields cannot be changed via this endpoint. Pass null for manualGatePassNumber, billNumber, biltiNumber, billBook, biltiBook, or category to clear them. Creates an audit record with previousState and modifiedState containing only the fields that changed.',
+        tags: ['Outgoing Gate Pass'],
+        summary: 'Update outgoing gate pass',
+        params: {
+          type: 'object',
+          required: ['outgoingGatePassId'],
+          properties: {
+            outgoingGatePassId: {
+              type: 'string',
+              description: 'Outgoing gate pass ID',
+            },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            manualGatePassNumber: {
+              type: ['number', 'null'],
+              description:
+                'Manual gate pass number. Pass null to clear the value.',
+            },
+            date: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Gate pass date',
+            },
+            from: { type: 'string', description: 'Origin' },
+            to: { type: 'string', description: 'Destination' },
+            truckNumber: {
+              type: 'string',
+              description: 'Truck number',
+            },
+            remarks: { type: 'string', description: 'Remarks' },
+            billNumber: {
+              type: ['number', 'null'],
+              description: 'Bill number. Pass null to clear.',
+            },
+            biltiNumber: {
+              type: ['number', 'null'],
+              description: 'Bilti number. Pass null to clear.',
+            },
+            billBook: {
+              type: ['number', 'null'],
+              description: 'Bill book number. Pass null to clear.',
+            },
+            biltiBook: {
+              type: ['number', 'null'],
+              description: 'Bilti book number. Pass null to clear.',
+            },
+            category: {
+              type: ['string', 'null'],
+              description: 'Category. Pass null to clear.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description: 'Outgoing gate pass updated successfully',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              message: { type: 'string' },
+              data: { type: 'object', additionalProperties: true },
+            },
+          },
+          400: {
+            description:
+              'Bad request (e.g. cancelled pass, no fields to update)',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          404: {
+            description: 'Outgoing gate pass not found',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          409: {
+            description: 'Concurrent modification',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    updateOutgoingGatePassHandler as never
   );
 
   fastify.post(

@@ -64,6 +64,37 @@ export const createOutgoingGatePassSchema = z.object({
     .max(50, 'Truck number must not exceed 50 characters')
     .optional(),
 
+  billNumber: z.coerce
+    .number()
+    .int('Bill number must be an integer')
+    .positive('Bill number must be a positive number')
+    .optional(),
+
+  biltiNumber: z.coerce
+    .number()
+    .int('Bilti number must be an integer')
+    .positive('Bilti number must be a positive number')
+    .optional(),
+
+  billBook: z.coerce
+    .number()
+    .int('Bill book must be an integer')
+    .positive('Bill book must be a positive number')
+    .optional(),
+
+  biltiBook: z.coerce
+    .number()
+    .int('Bilti book must be an integer')
+    .positive('Bilti book must be a positive number')
+    .optional(),
+
+  category: z
+    .string()
+    .trim()
+    .min(1, 'Category must be non-empty if provided')
+    .max(100, 'Category must not exceed 100 characters')
+    .optional(),
+
   storageGatePasses: z
     .array(outgoingStorageGatePassAllocationSchema)
     .min(1, 'At least one storage gate pass with allocations is required'),
@@ -123,4 +154,98 @@ export type CancelOutgoingGatePassParams = z.infer<
 
 export type CancelOutgoingGatePassInput = z.infer<
   typeof cancelOutgoingGatePassBodySchema
+>;
+
+export const updateOutgoingGatePassParamsSchema = z.object({
+  outgoingGatePassId: z
+    .string()
+    .trim()
+    .min(1, 'Outgoing gate pass ID is required')
+    .refine(
+      (val) => mongoose.Types.ObjectId.isValid(val),
+      'Invalid outgoing gate pass ID format'
+    ),
+});
+
+export const updateOutgoingGatePassBodySchema = z
+  .object({
+    manualGatePassNumber: z
+      .union([
+        z.coerce
+          .number()
+          .int('Manual gate pass number must be an integer')
+          .positive('Manual gate pass number must be a positive number'),
+        z.null(),
+      ])
+      .optional(),
+    date: z.coerce.date().optional(),
+    from: z.string().trim().min(1, 'From is required').max(200).optional(),
+    to: z.string().trim().min(1, 'To is required').max(200).optional(),
+    truckNumber: z
+      .string()
+      .trim()
+      .max(50, 'Truck number must not exceed 50 characters')
+      .optional(),
+    remarks: z
+      .string()
+      .trim()
+      .max(500, 'Remarks must not exceed 500 characters')
+      .optional(),
+    billNumber: z
+      .union([
+        z.coerce
+          .number()
+          .int('Bill number must be an integer')
+          .positive('Bill number must be a positive number'),
+        z.null(),
+      ])
+      .optional(),
+    biltiNumber: z
+      .union([
+        z.coerce
+          .number()
+          .int('Bilti number must be an integer')
+          .positive('Bilti number must be a positive number'),
+        z.null(),
+      ])
+      .optional(),
+    billBook: z
+      .union([
+        z.coerce
+          .number()
+          .int('Bill book must be an integer')
+          .positive('Bill book must be a positive number'),
+        z.null(),
+      ])
+      .optional(),
+    biltiBook: z
+      .union([
+        z.coerce
+          .number()
+          .int('Bilti book must be an integer')
+          .positive('Bilti book must be a positive number'),
+        z.null(),
+      ])
+      .optional(),
+    category: z
+      .union([
+        z
+          .string()
+          .trim()
+          .min(1, 'Category must be non-empty')
+          .max(100, 'Category must not exceed 100 characters'),
+        z.null(),
+      ])
+      .optional(),
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: 'At least one field must be provided for update',
+  });
+
+export type UpdateOutgoingGatePassParams = z.infer<
+  typeof updateOutgoingGatePassParamsSchema
+>;
+
+export type UpdateOutgoingGatePassInput = z.infer<
+  typeof updateOutgoingGatePassBodySchema
 >;

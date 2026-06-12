@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import mongoose from 'mongoose';
+import { IncomingGatePassCategory } from '../incoming-gate-pass/incoming-gate-pass.model.js';
 
 const transferAllocationSchema = z.object({
   size: z.string().trim().min(1, 'Size is required'),
@@ -68,11 +69,9 @@ export const createTransferStockSchema = z.object({
     .min(1, 'Variety is required')
     .max(100, 'Variety must not exceed 100 characters'),
 
-  storageCategory: z
-    .string()
-    .trim()
-    .min(1, 'Storage category is required')
-    .default('Transfer From Stores'),
+  category: z.nativeEnum(IncomingGatePassCategory, {
+    message: 'Category is required and must be one of the allowed options',
+  }),
 
   stage: z
     .string()

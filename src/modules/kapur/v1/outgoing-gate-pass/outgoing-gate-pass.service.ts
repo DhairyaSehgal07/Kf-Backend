@@ -9,12 +9,14 @@ import {
 import {
   OutgoingGatePassAudit,
   OutgoingGatePassAuditAction,
+  type OutgoingGatePassAuditState,
 } from './outgoing-gate-pass-audit.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import type { BagType } from '../storage-gate-pass/storage-gate-pass.model.js';
 import type {
   CancelOutgoingGatePassInput,
   CreateOutgoingGatePassInput,
+  UpdateOutgoingGatePassInput,
 } from './outgoing-gate-pass.schema.js';
 import {
   ConflictError,
@@ -75,6 +77,78 @@ function bagLineKey(
   row: string
 ): string {
   return `${size}|${chamber}|${floor}|${row}`;
+}
+
+const OUTGOING_GATE_PASS_EDITABLE_FIELDS = [
+  'manualGatePassNumber',
+  'date',
+  'from',
+  'to',
+  'truckNumber',
+  'remarks',
+  'billNumber',
+  'biltiNumber',
+  'billBook',
+  'biltiBook',
+  'category',
+] as const;
+
+const OUTGOING_GATE_PASS_NULLABLE_UPDATE_FIELDS = [
+  'manualGatePassNumber',
+  'billNumber',
+  'biltiNumber',
+  'billBook',
+  'biltiBook',
+  'category',
+] as const;
+
+function serializeOutgoingAuditValue(value: unknown): unknown {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (value instanceof Types.ObjectId) {
+    return value.toString();
+  }
+
+  return value;
+}
+
+function outgoingAuditValuesEqual(a: unknown, b: unknown): boolean {
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() === b.getTime();
+  }
+
+  return a === b;
+}
+
+function buildOutgoingGatePassAuditDiff(
+  existing: Record<string, unknown>,
+  payload: UpdateOutgoingGatePassInput
+): {
+  previousState: OutgoingGatePassAuditState;
+  modifiedState: OutgoingGatePassAuditState;
+} {
+  const previousState: OutgoingGatePassAuditState = {};
+  const modifiedState: OutgoingGatePassAuditState = {};
+
+  for (const field of OUTGOING_GATE_PASS_EDITABLE_FIELDS) {
+    if (payload[field] === undefined) {
+      continue;
+    }
+
+    const oldValue = existing[field];
+    const newValue = payload[field];
+
+    if (!outgoingAuditValuesEqual(oldValue, newValue)) {
+      if (oldValue !== undefined) {
+        previousState[field] = serializeOutgoingAuditValue(oldValue);
+      }
+      modifiedState[field] = serializeOutgoingAuditValue(newValue);
+    }
+  }
+
+  return { previousState, modifiedState };
 }
 
 /* =======================
@@ -675,6 +749,47 @@ async function assertOutgoingGatePassInColdStorage(
   return outgoing;
 }
 
+async function findOutgoingGatePassInColdStorage(
+  outgoingGatePassId: string,
+  coldStorageId: string,
+  logger?: FastifyBaseLogger
+) {
+  if (!mongoose.Types.ObjectId.isValid(outgoingGatePassId)) {
+    throw new ValidationError(
+      'Invalid outgoing gate pass ID format',
+      'INVALID_OUTGOING_GATE_PASS_ID'
+    );
+  }
+
+  const outgoing = await OutgoingGatePass.findById(outgoingGatePassId).lean();
+
+  if (!outgoing) {
+    logger?.warn({ outgoingGatePassId }, 'Outgoing gate pass not found');
+    throw new NotFoundError(
+      'Outgoing gate pass not found',
+      'OUTGOING_GATE_PASS_NOT_FOUND'
+    );
+  }
+
+  const FarmerStorageLink = mongoose.model('FarmerStorageLink');
+  const link = await FarmerStorageLink.findById(outgoing.farmerStorageLinkId)
+    .select('coldStorageId')
+    .lean();
+
+  const linkColdStorageId = (
+    link as { coldStorageId?: Types.ObjectId } | null
+  )?.coldStorageId?.toString();
+
+  if (!link || linkColdStorageId !== coldStorageId) {
+    throw new NotFoundError(
+      'Outgoing gate pass not found',
+      'OUTGOING_GATE_PASS_NOT_FOUND'
+    );
+  }
+
+  return outgoing;
+}
+
 /* =======================
    CREATE OUTGOING GATE PASS
 ======================= */
@@ -799,6 +914,17 @@ export async function createOutgoingGatePass(
           from: payload.from,
           to: payload.to,
           truckNumber: payload.truckNumber ?? '',
+          ...(payload.billNumber !== undefined && {
+            billNumber: payload.billNumber,
+          }),
+          ...(payload.biltiNumber !== undefined && {
+            biltiNumber: payload.biltiNumber,
+          }),
+          ...(payload.billBook !== undefined && { billBook: payload.billBook }),
+          ...(payload.biltiBook !== undefined && {
+            biltiBook: payload.biltiBook,
+          }),
+          ...(payload.category !== undefined && { category: payload.category }),
           orderDetails,
           storageGatePassSnapshots,
           remarks: payload.remarks,
@@ -848,6 +974,114 @@ export async function createOutgoingGatePass(
     });
   } finally {
     session.endSession();
+  }
+}
+
+/* =======================
+   UPDATE OUTGOING GATE PASS
+======================= */
+
+export async function updateOutgoingGatePass(
+  coldStorageId: string,
+  outgoingGatePassId: string,
+  payload: UpdateOutgoingGatePassInput,
+  logger?: FastifyBaseLogger,
+  editedById?: string,
+  requestMetadata?: { ipAddress?: string; userAgent?: string }
+): Promise<Record<string, unknown>> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+
+  try {
+    const existing = await findOutgoingGatePassInColdStorage(
+      outgoingGatePassId,
+      coldStorageId,
+      logger
+    );
+
+    if (existing.status === OutgoingGatePassStatus.CANCELLED) {
+      throw new ValidationError(
+        'Cancelled outgoing gate pass cannot be edited',
+        'OUTGOING_GATE_PASS_CANCELLED'
+      );
+    }
+
+    const { previousState, modifiedState } = buildOutgoingGatePassAuditDiff(
+      existing as unknown as Record<string, unknown>,
+      payload
+    );
+    const hasAuditChanges = Object.keys(modifiedState).length > 0;
+
+    const updateData: Record<string, unknown> = { ...payload };
+    const unsetFields: Record<string, 1> = {};
+
+    for (const field of OUTGOING_GATE_PASS_NULLABLE_UPDATE_FIELDS) {
+      if (updateData[field] === null) {
+        unsetFields[field] = 1;
+        delete updateData[field];
+      }
+    }
+
+    const updateQuery: Record<string, unknown> = {};
+    if (Object.keys(updateData).length > 0) {
+      updateQuery.$set = updateData;
+    }
+    if (Object.keys(unsetFields).length > 0) {
+      updateQuery.$unset = unsetFields;
+    }
+
+    if (Object.keys(updateQuery).length === 0) {
+      throw new ValidationError(
+        'At least one field must be provided for update',
+        'NO_FIELDS_TO_UPDATE'
+      );
+    }
+
+    const outgoingObjectId = new Types.ObjectId(outgoingGatePassId);
+
+    const updated = await OutgoingGatePass.findOneAndUpdate(
+      {
+        _id: outgoingObjectId,
+        status: OutgoingGatePassStatus.ACTIVE,
+      },
+      updateQuery,
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!updated) {
+      throw new ConflictError(
+        'Outgoing gate pass could not be updated; it may have been modified concurrently',
+        'CONCURRENT_MODIFICATION'
+      );
+    }
+
+    if (hasAuditChanges) {
+      await OutgoingGatePassAudit.create({
+        outgoingGatePassId: outgoingObjectId,
+        action: OutgoingGatePassAuditAction.EDIT,
+        performedById: editedById ? new Types.ObjectId(editedById) : undefined,
+        previousState,
+        modifiedState,
+        ipAddress: requestMetadata?.ipAddress,
+        userAgent: requestMetadata?.userAgent,
+      });
+    }
+
+    logger?.info(
+      { outgoingGatePassId, fieldsUpdated: Object.keys(modifiedState) },
+      'Outgoing gate pass updated successfully'
+    );
+
+    return formatOutgoingGatePassResponse(outgoingObjectId);
+  } catch (error) {
+    handleOutgoingServiceError(error, logger, {
+      message: 'Failed to update outgoing gate pass',
+      code: 'UPDATE_OUTGOING_GATE_PASS_ERROR',
+    });
   }
 }
 
@@ -1020,6 +1254,7 @@ export async function createOutgoingGatePassForTransferStock(
         orderDetails,
         storageGatePassSnapshots,
         remarks: params.remarks,
+        category: 'Internal Transfer',
         status: OutgoingGatePassStatus.ACTIVE,
       },
     ],

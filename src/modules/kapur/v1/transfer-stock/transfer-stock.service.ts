@@ -858,7 +858,7 @@ export async function createTransferStockGatePass(
           gatePassNo: payload.destinationStorageGatePassNo,
           date: payload.date,
           variety: payload.variety,
-          storageCategory: payload.storageCategory,
+          storageCategory: payload.category,
           ...(payload.stage !== undefined && { stage: payload.stage }),
           bagSizes: destinationBagSizes,
           editHistory: [],

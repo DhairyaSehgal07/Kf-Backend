@@ -557,6 +557,11 @@ function daybookOutgoingProjectStage(): mongoose.PipelineStage {
       from: 1,
       to: 1,
       truckNumber: 1,
+      billNumber: 1,
+      biltiNumber: 1,
+      billBook: 1,
+      biltiBook: 1,
+      category: 1,
       orderDetails: {
         $sortArray: {
           input: { $ifNull: ['$orderDetails', []] },

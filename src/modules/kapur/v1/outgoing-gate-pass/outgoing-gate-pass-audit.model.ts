@@ -6,6 +6,7 @@ import mongoose, { Schema, Document, Types, Model } from 'mongoose';
 
 export enum OutgoingGatePassAuditAction {
   CREATE = 'CREATE',
+  EDIT = 'EDIT',
   CANCEL = 'CANCEL',
 }
 

@@ -22,6 +22,8 @@ interface CreateNikasiGatePassBody {
   isBooked?: boolean;
   billNumber: number;
   bitliNumber: number;
+  billBook?: number;
+  biltiBook?: number;
   category: string;
   date: string;
   from: string;
@@ -33,6 +35,61 @@ interface CreateNikasiGatePassBody {
   averageWeightPerBag?: number;
   idempotencyKey?: string;
 }
+
+/** Shared OpenAPI properties for nikasi gate pass documents in list/search responses */
+const nikasiGatePassItemProperties = {
+  _id: { type: 'string', description: 'Nikasi gate pass ID' },
+  farmerStorageLinkId: {
+    type: 'object',
+    additionalProperties: true,
+    description: 'Populated farmer storage link',
+  },
+  dispatchLedgerId: {
+    type: 'object',
+    additionalProperties: true,
+    description: 'Populated dispatch ledger',
+  },
+  createdBy: {
+    type: 'object',
+    additionalProperties: true,
+    description: 'Populated store admin who created the pass',
+  },
+  gatePassNo: { type: 'number', description: 'Gate pass number' },
+  manualGatePassNumber: {
+    type: 'number',
+    description: 'Manual gate pass number',
+  },
+  isBooked: { type: 'boolean', description: 'Whether this pass is booked' },
+  billNumber: { type: 'number', description: 'Bill number' },
+  bitliNumber: { type: 'number', description: 'Bitli number' },
+  billBook: { type: 'number', description: 'Bill book number' },
+  biltiBook: { type: 'number', description: 'Bilti book number' },
+  category: { type: 'string', description: 'Category' },
+  date: { type: 'string', format: 'date-time', description: 'Gate pass date' },
+  from: { type: 'string', description: 'Source location' },
+  to: { type: 'string', description: 'Destination location' },
+  truckNumber: { type: 'string', description: 'Truck number' },
+  bagSize: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        size: { type: 'string' },
+        variety: { type: 'string' },
+        quantityIssued: { type: 'number' },
+      },
+    },
+  },
+  remarks: { type: 'string', description: 'Remarks' },
+  netWeight: { type: 'number', description: 'Net weight' },
+  averageWeightPerBag: {
+    type: 'number',
+    description: 'Average weight per bag',
+  },
+  idempotencyKey: { type: 'string', description: 'Idempotency key' },
+  createdAt: { type: 'string', format: 'date-time' },
+  updatedAt: { type: 'string', format: 'date-time' },
+} as const;
 
 function isDuplicateKeyError(error: unknown): error is { code: number } {
   return (
@@ -159,6 +216,14 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
               type: 'number',
               description: 'Bitli number',
             },
+            billBook: {
+              type: 'number',
+              description: 'Bill book number',
+            },
+            biltiBook: {
+              type: 'number',
+              description: 'Bilti book number',
+            },
             category: {
               type: 'string',
               description: 'Category',
@@ -206,7 +271,11 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
             properties: {
               status: { type: 'string' },
               message: { type: 'string' },
-              data: { type: 'object', additionalProperties: true },
+              data: {
+                type: 'object',
+                properties: nikasiGatePassItemProperties,
+                additionalProperties: true,
+              },
             },
           },
           400: {
@@ -248,7 +317,7 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
       schema: {
         ...searchNikasiGatePassSchema,
         description:
-          "Search nikasi gate passes for the authenticated store admin's cold storage. Matches documents where the provided number equals either gatePassNo or manualGatePassNumber.",
+          "Search nikasi gate passes for the authenticated store admin's cold storage. Matches documents where the provided number equals gatePassNo, manualGatePassNumber, billNumber, bitliNumber, billBook, or biltiBook.",
         tags: ['Nikasi Gate Pass'],
         summary: 'Search nikasi gate passes by number',
         body: {
@@ -258,7 +327,7 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
             number: {
               type: 'number',
               description:
-                'Gate pass number to search. Matches gatePassNo or manualGatePassNumber.',
+                'Number to search. Matches gatePassNo, manualGatePassNumber, billNumber, bitliNumber, billBook, or biltiBook.',
             },
           },
         },
@@ -273,7 +342,11 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
                 properties: {
                   nikasiGatePasses: {
                     type: 'array',
-                    items: { type: 'object', additionalProperties: true },
+                    items: {
+                      type: 'object',
+                      properties: nikasiGatePassItemProperties,
+                      additionalProperties: true,
+                    },
                   },
                 },
               },
@@ -366,7 +439,11 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
                 properties: {
                   nikasiGatePasses: {
                     type: 'array',
-                    items: { type: 'object', additionalProperties: true },
+                    items: {
+                      type: 'object',
+                      properties: nikasiGatePassItemProperties,
+                      additionalProperties: true,
+                    },
                   },
                   pagination: {
                     type: 'object',
