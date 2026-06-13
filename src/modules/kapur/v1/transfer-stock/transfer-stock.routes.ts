@@ -290,6 +290,11 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
               description:
                 'Storage gate pass number created on the destination farmer',
             },
+            manualGatePassNumber: {
+              type: 'number',
+              description:
+                'Manual gate pass number for the destination storage gate pass (incoming side)',
+            },
             date: {
               type: 'string',
               format: 'date-time',
