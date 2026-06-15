@@ -1,11 +1,18 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
+  createNikasiGatePass,
   getPaginatedNikasiGatePassesByColdStorage,
   searchNikasiGatePassesByNumber,
 } from './nikasi-gate-pass.service.js';
-import { SearchNikasiGatePassInput } from './nikasi-gate-pass.schema.js';
+import {
+  createNikasiGatePassSchema,
+  CreateNikasiGatePassInput,
+  SearchNikasiGatePassInput,
+} from './nikasi-gate-pass.schema.js';
 import {
   AppError,
+  ConflictError,
+  NotFoundError,
   UnauthorizedError,
   ValidationError,
 } from '../../../../utils/errors.js';
@@ -57,6 +64,106 @@ function sendNikasiGatePassError(reply: FastifyReply, error: unknown) {
           : 'Internal server error',
     },
   });
+}
+
+/**
+ * Handler for creating a nikasi gate pass.
+ */
+export async function createNikasiGatePassHandler(
+  request: FastifyRequest<{ Body: CreateNikasiGatePassInput }>,
+  reply: FastifyReply
+) {
+  try {
+    request.log.info(
+      {
+        bagSizeCount: request.body.bagSize?.length ?? 0,
+        gatePassNo: request.body.gatePassNo,
+        date: request.body.date,
+        isBooked: request.body.isBooked ?? false,
+      },
+      'Create nikasi gate pass request'
+    );
+
+    const body = createNikasiGatePassSchema.parse(request.body);
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const storeAdminId = (request as AuthenticatedRequest).user?.id;
+    const result = await createNikasiGatePass(
+      coldStorageId,
+      body,
+      request.log,
+      storeAdminId
+    );
+
+    return reply.code(201).send({
+      status: 'Success',
+      message: 'Nikasi gate pass created successfully.',
+      data: result,
+    });
+  } catch (error) {
+    request.log.error(
+      { error, body: request.body },
+      'Error in createNikasiGatePassHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+    }
+
+    if (error instanceof ConflictError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        status: 'error',
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
+    const statusCode = 500;
+    return reply.code(statusCode).send({
+      status: 'error',
+      statusCode,
+      errorCode: 'INTERNAL_SERVER_ERROR',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error instanceof Error
+            ? error.message
+            : 'An unexpected error occurred'
+          : 'An unexpected error occurred',
+    });
+  }
 }
 
 /**

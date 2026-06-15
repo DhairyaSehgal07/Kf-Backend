@@ -1,40 +1,11 @@
-import mongoose from 'mongoose';
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { NikasiGatePass } from './nikasi-gate-pass.model.js';
+import { FastifyInstance } from 'fastify';
 import {
+  createNikasiGatePassHandler,
   getNikasiGatePassesByColdStorageHandler,
   searchNikasiGatePassHandler,
 } from './nikasi-gate-pass.controller.js';
 import { searchNikasiGatePassSchema } from './nikasi-gate-pass.schema.js';
-import { authenticate, AuthenticatedRequest } from '../../../../utils/auth.js';
-
-interface CreateNikasiBagSizeBody {
-  size: string;
-  variety: string;
-  quantityIssued: number;
-}
-
-interface CreateNikasiGatePassBody {
-  farmerStorageLinkId: string;
-  dispatchLedgerId: string;
-  gatePassNo: number;
-  manualGatePassNumber?: number;
-  isBooked?: boolean;
-  billNumber: number;
-  bitliNumber: number;
-  billBook?: number;
-  biltiBook?: number;
-  category: string;
-  date: string;
-  from: string;
-  to?: string;
-  truckNumber?: string;
-  bagSize: CreateNikasiBagSizeBody[];
-  remarks?: string;
-  netWeight?: number;
-  averageWeightPerBag?: number;
-  idempotencyKey?: string;
-}
+import { authenticate } from '../../../../utils/auth.js';
 
 /** Shared OpenAPI properties for nikasi gate pass documents in list/search responses */
 const nikasiGatePassItemProperties = {
@@ -90,81 +61,6 @@ const nikasiGatePassItemProperties = {
   createdAt: { type: 'string', format: 'date-time' },
   updatedAt: { type: 'string', format: 'date-time' },
 } as const;
-
-function isDuplicateKeyError(error: unknown): error is { code: number } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: number }).code === 11000
-  );
-}
-
-async function createNikasiGatePassHandler(
-  request: FastifyRequest<{ Body: CreateNikasiGatePassBody }>,
-  reply: FastifyReply
-) {
-  try {
-    request.log.info(
-      {
-        bagSizeCount: request.body.bagSize?.length ?? 0,
-        gatePassNo: request.body.gatePassNo,
-        date: request.body.date,
-      },
-      'Create nikasi gate pass request'
-    );
-
-    const storeAdminId = (request as AuthenticatedRequest).user?.id;
-    const nikasiGatePass = await NikasiGatePass.create({
-      ...request.body,
-      ...(storeAdminId && { createdBy: storeAdminId }),
-    });
-
-    return reply.code(201).send({
-      status: 'Success',
-      message: 'Nikasi gate pass created successfully.',
-      data: nikasiGatePass,
-    });
-  } catch (error) {
-    request.log.error(
-      { error, body: request.body },
-      'Error in createNikasiGatePassHandler'
-    );
-
-    if (error instanceof mongoose.Error.ValidationError) {
-      const messages = Object.values(error.errors).map((err) => err.message);
-
-      return reply.code(400).send({
-        status: 'error',
-        statusCode: 400,
-        errorCode: 'MONGOOSE_VALIDATION_ERROR',
-        message: messages.join(', '),
-      });
-    }
-
-    if (isDuplicateKeyError(error)) {
-      return reply.code(409).send({
-        status: 'error',
-        statusCode: 409,
-        errorCode: 'DUPLICATE_KEY_ERROR',
-        message: 'Nikasi gate pass already exists',
-      });
-    }
-
-    const statusCode = 500;
-    return reply.code(statusCode).send({
-      status: 'error',
-      statusCode,
-      errorCode: 'INTERNAL_SERVER_ERROR',
-      message:
-        process.env.NODE_ENV === 'development'
-          ? error instanceof Error
-            ? error.message
-            : 'An unexpected error occurred'
-          : 'An unexpected error occurred',
-    });
-  }
-}
 
 export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
   fastify.post(
@@ -279,7 +175,18 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
             },
           },
           400: {
-            description: 'Bad request',
+            description:
+              'Bad request (validation error or insufficient booked stock)',
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              statusCode: { type: 'number' },
+              errorCode: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          404: {
+            description: 'Dispatch ledger not found',
             type: 'object',
             properties: {
               status: { type: 'string' },
