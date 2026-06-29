@@ -49,23 +49,25 @@ export const createNikasiGatePassSchema = z.object({
   billNumber: z.coerce
     .number()
     .int('Bill number must be an integer')
-    .positive('Bill number must be a positive number'),
+    .positive('Bill number must be a positive number')
+    .optional(),
 
   bitliNumber: z.coerce
     .number()
     .int('Bitli number must be an integer')
-    .positive('Bitli number must be a positive number'),
-
-  billBook: z.coerce
-    .number()
-    .int('Bill book must be an integer')
-    .positive('Bill book must be a positive number')
+    .positive('Bitli number must be a positive number')
     .optional(),
 
-  biltiBook: z.coerce
-    .number()
-    .int('Bilti book must be an integer')
-    .positive('Bilti book must be a positive number')
+  billBook: z
+    .string()
+    .trim()
+    .min(1, 'Bill book must be non-empty if provided')
+    .optional(),
+
+  biltiBook: z
+    .string()
+    .trim()
+    .min(1, 'Bilti book must be non-empty if provided')
     .optional(),
 
   category: z.string().trim().min(1, 'Category is required'),

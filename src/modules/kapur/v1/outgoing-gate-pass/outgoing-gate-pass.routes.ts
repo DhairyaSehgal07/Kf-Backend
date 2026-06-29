@@ -55,8 +55,8 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
             },
             billNumber: { type: 'number', description: 'Bill number' },
             biltiNumber: { type: 'number', description: 'Bilti number' },
-            billBook: { type: 'number', description: 'Bill book number' },
-            biltiBook: { type: 'number', description: 'Bilti book number' },
+            billBook: { type: 'string', description: 'Bill book' },
+            biltiBook: { type: 'string', description: 'Bilti book' },
             category: { type: 'string', description: 'Category' },
             storageGatePasses: {
               type: 'array',
@@ -219,12 +219,12 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
               description: 'Bilti number. Pass null to clear.',
             },
             billBook: {
-              type: ['number', 'null'],
-              description: 'Bill book number. Pass null to clear.',
+              type: ['string', 'null'],
+              description: 'Bill book. Pass null to clear.',
             },
             biltiBook: {
-              type: ['number', 'null'],
-              description: 'Bilti book number. Pass null to clear.',
+              type: ['string', 'null'],
+              description: 'Bilti book. Pass null to clear.',
             },
             category: {
               type: ['string', 'null'],

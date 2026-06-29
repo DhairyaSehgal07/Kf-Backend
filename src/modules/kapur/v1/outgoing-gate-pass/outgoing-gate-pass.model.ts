@@ -63,8 +63,8 @@ export interface IOutgoingGatePass extends Document {
 
   billNumber?: number;
   biltiNumber?: number;
-  billBook?: number;
-  biltiBook?: number;
+  billBook?: string;
+  biltiBook?: string;
   category?: string;
 
   orderDetails: IOutgoingOrderDetail[];
@@ -297,11 +297,13 @@ const OutgoingGatePassSchema = new Schema<IOutgoingGatePass>(
     },
 
     billBook: {
-      type: Number,
+      type: String,
+      trim: true,
     },
 
     biltiBook: {
-      type: Number,
+      type: String,
+      trim: true,
     },
 
     category: {

@@ -76,16 +76,16 @@ export const createOutgoingGatePassSchema = z.object({
     .positive('Bilti number must be a positive number')
     .optional(),
 
-  billBook: z.coerce
-    .number()
-    .int('Bill book must be an integer')
-    .positive('Bill book must be a positive number')
+  billBook: z
+    .string()
+    .trim()
+    .min(1, 'Bill book must be non-empty if provided')
     .optional(),
 
-  biltiBook: z.coerce
-    .number()
-    .int('Bilti book must be an integer')
-    .positive('Bilti book must be a positive number')
+  biltiBook: z
+    .string()
+    .trim()
+    .min(1, 'Bilti book must be non-empty if provided')
     .optional(),
 
   category: z
@@ -211,19 +211,13 @@ export const updateOutgoingGatePassBodySchema = z
       .optional(),
     billBook: z
       .union([
-        z.coerce
-          .number()
-          .int('Bill book must be an integer')
-          .positive('Bill book must be a positive number'),
+        z.string().trim().min(1, 'Bill book must be non-empty'),
         z.null(),
       ])
       .optional(),
     biltiBook: z
       .union([
-        z.coerce
-          .number()
-          .int('Bilti book must be an integer')
-          .positive('Bilti book must be a positive number'),
+        z.string().trim().min(1, 'Bilti book must be non-empty'),
         z.null(),
       ])
       .optional(),

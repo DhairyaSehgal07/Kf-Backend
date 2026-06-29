@@ -226,12 +226,12 @@ export async function storeAdminRoutes(fastify: FastifyInstance) {
                       description: 'Outgoing pass: bilti number',
                     },
                     billBook: {
-                      type: 'number',
-                      description: 'Outgoing pass: bill book number',
+                      type: 'string',
+                      description: 'Outgoing pass: bill book',
                     },
                     biltiBook: {
-                      type: 'number',
-                      description: 'Outgoing pass: bilti book number',
+                      type: 'string',
+                      description: 'Outgoing pass: bilti book',
                     },
                     category: {
                       type: 'string',

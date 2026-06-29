@@ -18,10 +18,10 @@ export interface INikasiGatePass extends Document {
   manualGatePassNumber?: number;
   isBooked?: boolean;
 
-  billNumber: number;
-  bitliNumber: number;
-  billBook?: number;
-  biltiBook?: number;
+  billNumber?: number;
+  bitliNumber?: number;
+  billBook?: string;
+  biltiBook?: string;
   category: string;
 
   date: Date;
@@ -114,20 +114,20 @@ const NikasiGatePassSchema = new Schema<INikasiGatePass>(
 
     billNumber: {
       type: Number,
-      required: true,
     },
 
     bitliNumber: {
       type: Number,
-      required: true,
     },
 
     billBook: {
-      type: Number,
+      type: String,
+      trim: true,
     },
 
     biltiBook: {
-      type: Number,
+      type: String,
+      trim: true,
     },
 
     category: {
