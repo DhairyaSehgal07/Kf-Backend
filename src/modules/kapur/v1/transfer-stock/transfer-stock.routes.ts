@@ -9,6 +9,7 @@ import {
   getTransferStockReportSchema,
 } from './transfer-stock.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
+import { STORAGE_CATEGORIES } from '../../../../config/constants.js';
 
 /**
  * Register transfer stock routes
@@ -303,16 +304,9 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
             variety: { type: 'string', description: 'Variety' },
             category: {
               type: 'string',
-              enum: [
-                'Own Stock',
-                'Contract Farming',
-                'Fazalpur',
-                'Purchases-Apr',
-                'Conversion',
-                'Transfer From Stores',
-              ],
+              enum: [...STORAGE_CATEGORIES],
               description:
-                'Category for the destination storage gate pass (incoming side)',
+                'Storage category for the destination storage gate pass',
             },
             stage: { type: 'string', description: 'Optional stage' },
             from: {
