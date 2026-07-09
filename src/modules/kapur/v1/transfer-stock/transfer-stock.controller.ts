@@ -4,6 +4,7 @@ import {
   getTransferStockGatePassesByColdStorage,
   getTransferStockGatePassReport,
 } from './transfer-stock.service.js';
+import { getNextVoucherNumber } from '../store-admin/store-admin.service.js';
 import {
   createTransferStockSchema,
   CreateTransferStockInput,
@@ -214,9 +215,20 @@ export async function createTransferStockHandler(
     const body = createTransferStockSchema.parse(request.body);
     const coldStorageId = getColdStorageIdFromRequest(request);
     const storeAdminId = (request as AuthenticatedRequest).user?.id;
+
+    const [outgoingGatePassNo, destinationStorageGatePassNo] =
+      await Promise.all([
+        getNextVoucherNumber(coldStorageId, 'outgoing-gate-pass', request.log),
+        getNextVoucherNumber(coldStorageId, 'storage-gate-pass', request.log),
+      ]);
+
     const result = await createTransferStockGatePass(
       coldStorageId,
-      body,
+      {
+        ...body,
+        outgoingGatePassNo,
+        destinationStorageGatePassNo,
+      },
       request.log,
       storeAdminId
     );

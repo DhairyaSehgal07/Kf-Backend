@@ -51,16 +51,6 @@ export const createTransferStockSchema = z.object({
     .int('Transfer gate pass number must be an integer')
     .positive('Transfer gate pass number must be a positive number'),
 
-  outgoingGatePassNo: z.coerce
-    .number()
-    .int('Outgoing gate pass number must be an integer')
-    .positive('Outgoing gate pass number must be a positive number'),
-
-  destinationStorageGatePassNo: z.coerce
-    .number()
-    .int('Destination storage gate pass number must be an integer')
-    .positive('Destination storage gate pass number must be a positive number'),
-
   manualGatePassNumber: z.coerce
     .number()
     .int('Manual gate pass number must be an integer')
@@ -116,6 +106,12 @@ export const createTransferStockSchema = z.object({
 export type CreateTransferStockInput = z.infer<
   typeof createTransferStockSchema
 >;
+
+/** Internal payload after controller assigns auto-generated gate pass numbers */
+export type CreateTransferStockServiceInput = CreateTransferStockInput & {
+  outgoingGatePassNo: number;
+  destinationStorageGatePassNo: number;
+};
 
 export const getTransferStockGatePassesByColdStorageQuerySchema = z.object({
   querystring: z.object({

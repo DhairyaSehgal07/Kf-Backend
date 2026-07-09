@@ -249,7 +249,7 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
     {
       schema: {
         description:
-          'Transfer stock from one farmer storage link to another. Deducts source storage gate pass quantities, creates a destination storage gate pass, an outgoing gate pass on the source farmer, and a transfer stock record linking all three.',
+          'Transfer stock from one farmer storage link to another. Deducts source storage gate pass quantities, creates a destination storage gate pass, an outgoing gate pass on the source farmer, and a transfer stock record linking all three. Outgoing and destination storage gate pass numbers are auto-generated from the next voucher sequence.',
         tags: ['Transfer Stock'],
         summary: 'Create transfer stock gate pass',
         body: {
@@ -258,8 +258,6 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
             'fromFarmerStorageLinkId',
             'toFarmerStorageLinkId',
             'gatePassNo',
-            'outgoingGatePassNo',
-            'destinationStorageGatePassNo',
             'date',
             'variety',
             'category',
@@ -280,16 +278,6 @@ export async function transferStockRoutes(fastify: FastifyInstance) {
               type: 'number',
               description:
                 'Transfer voucher number (unique per source farmer link)',
-            },
-            outgoingGatePassNo: {
-              type: 'number',
-              description:
-                'Outgoing gate pass number created on the source farmer',
-            },
-            destinationStorageGatePassNo: {
-              type: 'number',
-              description:
-                'Storage gate pass number created on the destination farmer',
             },
             manualGatePassNumber: {
               type: 'number',

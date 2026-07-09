@@ -6,7 +6,7 @@ import {
 } from './transfer-stock.model.js';
 import {
   TRANSFER_STOCK_REPORT_COLUMNS,
-  type CreateTransferStockInput,
+  type CreateTransferStockServiceInput,
   type GetTransferStockGatePassesByColdStorageQuery,
   type GetTransferStockReportQuery,
   type TransferStockReport,
@@ -114,7 +114,7 @@ async function assertFarmerStorageLinkInColdStorage(
 }
 
 function toOutgoingPayload(
-  payload: CreateTransferStockInput
+  payload: CreateTransferStockServiceInput
 ): CreateOutgoingGatePassInput {
   return {
     farmerStorageLinkId: payload.fromFarmerStorageLinkId,
@@ -705,7 +705,7 @@ function handleTransferStockServiceError(
 
 export async function createTransferStockGatePass(
   coldStorageId: string,
-  payload: CreateTransferStockInput,
+  payload: CreateTransferStockServiceInput,
   logger?: FastifyBaseLogger,
   createdById?: string
 ): Promise<Record<string, unknown>> {
