@@ -5,6 +5,7 @@ import { GradingGatePass } from '../grading-gate-pass/grading-gate-pass.model.js
 import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import { NikasiGatePass } from '../nikasi-gate-pass/nikasi-gate-pass.model.js';
+import { DispatchLedger } from '../dispatch-ledger/dispatch-ledger.model.js';
 import { ValidationError, AppError } from '../../../../utils/errors.js';
 import { calculateGradingNetWeightKg } from '../../../../utils/calculations.js';
 import { JUTE_BAG_WEIGHT } from '../../../../config/constants.js';
@@ -52,13 +53,20 @@ export async function getOverview(
 
     // Scope all data to this cold storage only (caller must pass the logged-in user's coldStorageId)
     const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
-    const farmerStorageLinkIds = await FarmerStorageLink.find({
-      coldStorageId: coldStorageObjectId,
-    })
-      .distinct('_id')
-      .lean();
+    const [farmerStorageLinkIds, dispatchLedgerIds] = await Promise.all([
+      FarmerStorageLink.find({
+        coldStorageId: coldStorageObjectId,
+      })
+        .distinct('_id')
+        .lean(),
+      DispatchLedger.find({
+        coldStorageId: coldStorageObjectId,
+      })
+        .distinct('_id')
+        .lean(),
+    ]);
 
-    if (farmerStorageLinkIds.length === 0) {
+    if (farmerStorageLinkIds.length === 0 && dispatchLedgerIds.length === 0) {
       return {
         totalIncomingBags: 0,
         totalIncomingWeight: 0,
@@ -113,7 +121,7 @@ export async function getOverview(
       farmerStorageLinkId: { $in: farmerStorageLinkIds },
     };
     const matchNikasi: Record<string, unknown> = {
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+      dispatchLedgerId: { $in: dispatchLedgerIds },
     };
     if (filters.dateFrom) {
       const start = new Date(filters.dateFrom);

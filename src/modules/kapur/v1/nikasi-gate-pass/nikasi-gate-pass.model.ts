@@ -11,7 +11,6 @@ interface INikasiBagSize {
 }
 
 export interface INikasiGatePass extends Document {
-  farmerStorageLinkId: Types.ObjectId;
   dispatchLedgerId: Types.ObjectId;
   createdBy?: Types.ObjectId;
   gatePassNo: number;
@@ -78,12 +77,6 @@ const NikasiBagSizeSchema = new Schema<INikasiBagSize>(
 
 const NikasiGatePassSchema = new Schema<INikasiGatePass>(
   {
-    farmerStorageLinkId: {
-      type: Schema.Types.ObjectId,
-      ref: 'FarmerStorageLink',
-      required: true,
-      index: true,
-    },
     dispatchLedgerId: {
       type: Schema.Types.ObjectId,
       ref: 'DispatchLedger',
@@ -203,12 +196,12 @@ NikasiGatePassSchema.index(
 // Created by user lookup
 // createdBy is indexed via field-level index: true
 
-// Farmer storage link lookup
-NikasiGatePassSchema.index({ farmerStorageLinkId: 1, date: -1 });
+// Dispatch ledger lookup by date
+NikasiGatePassSchema.index({ dispatchLedgerId: 1, date: -1 });
 
-// Voucher number unique per farmer-storage link (same voucher can exist for different cold storages)
+// Voucher number unique per dispatch ledger
 NikasiGatePassSchema.index(
-  { farmerStorageLinkId: 1, gatePassNo: 1 },
+  { dispatchLedgerId: 1, gatePassNo: 1 },
   { unique: true }
 );
 

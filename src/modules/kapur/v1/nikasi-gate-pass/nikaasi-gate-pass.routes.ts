@@ -10,11 +10,6 @@ import { authenticate } from '../../../../utils/auth.js';
 /** Shared OpenAPI properties for nikasi gate pass documents in list/search responses */
 const nikasiGatePassItemProperties = {
   _id: { type: 'string', description: 'Nikasi gate pass ID' },
-  farmerStorageLinkId: {
-    type: 'object',
-    additionalProperties: true,
-    description: 'Populated farmer storage link',
-  },
   dispatchLedgerId: {
     type: 'object',
     additionalProperties: true,
@@ -73,7 +68,6 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
         body: {
           type: 'object',
           required: [
-            'farmerStorageLinkId',
             'dispatchLedgerId',
             'gatePassNo',
             'category',
@@ -82,10 +76,6 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
             'bagSize',
           ],
           properties: {
-            farmerStorageLinkId: {
-              type: 'string',
-              description: 'Farmer storage link ID',
-            },
             dispatchLedgerId: {
               type: 'string',
               description: 'Dispatch ledger ID',

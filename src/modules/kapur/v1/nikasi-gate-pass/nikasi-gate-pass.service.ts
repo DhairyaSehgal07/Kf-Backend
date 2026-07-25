@@ -63,6 +63,16 @@ function bagLineKey(size: string, variety: string): string {
   return `${size}::${variety}`;
 }
 
+async function getDispatchLedgerIdsForColdStorage(
+  coldStorageId: string
+): Promise<Types.ObjectId[]> {
+  return DispatchLedger.find({
+    coldStorageId: new Types.ObjectId(coldStorageId),
+  })
+    .distinct('_id')
+    .lean();
+}
+
 function handleServiceError(error: unknown, logger?: FastifyBaseLogger): never {
   if (
     error instanceof ConflictError ||
@@ -295,6 +305,27 @@ export async function createNikasiGatePass(
       );
     }
 
+    const dispatchLedgerIds = await DispatchLedger.find({
+      coldStorageId: new Types.ObjectId(coldStorageId),
+    })
+      .session(session)
+      .distinct('_id')
+      .lean();
+
+    const existingByGatePassNo = await NikasiGatePass.findOne({
+      gatePassNo: payload.gatePassNo,
+      dispatchLedgerId: { $in: dispatchLedgerIds },
+    })
+      .session(session)
+      .lean();
+
+    if (existingByGatePassNo) {
+      throw new ConflictError(
+        `Gate pass number ${payload.gatePassNo} already exists for this cold storage`,
+        'GATE_PASS_NUMBER_EXISTS'
+      );
+    }
+
     if (payload.isBooked) {
       await applyBookingFifoDeductions(
         payload.dispatchLedgerId,
@@ -304,7 +335,6 @@ export async function createNikasiGatePass(
     }
 
     const nikasiGatePass = new NikasiGatePass({
-      farmerStorageLinkId: new Types.ObjectId(payload.farmerStorageLinkId),
       dispatchLedgerId: new Types.ObjectId(payload.dispatchLedgerId),
       ...(createdBy && { createdBy: new Types.ObjectId(createdBy) }),
       gatePassNo: payload.gatePassNo,
@@ -373,17 +403,11 @@ export async function getPaginatedNikasiGatePassesByColdStorage(
     const sortOrder = options.sortOrder ?? 'desc';
     const sortDir = sortOrder === 'desc' ? -1 : 1;
 
-    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
-
-    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-    const farmerStorageLinkIds = await FarmerStorageLink.find({
-      coldStorageId: coldStorageObjectId,
-    })
-      .distinct('_id')
-      .lean();
+    const dispatchLedgerIds =
+      await getDispatchLedgerIdsForColdStorage(coldStorageId);
 
     const match: Record<string, unknown> = {
-      farmerStorageLinkId: { $in: farmerStorageLinkIds },
+      dispatchLedgerId: { $in: dispatchLedgerIds },
     };
 
     if (options.dateFrom) {
@@ -415,14 +439,6 @@ export async function getPaginatedNikasiGatePassesByColdStorage(
     const [total, nikasiGatePasses] = await Promise.all([
       NikasiGatePass.countDocuments(match),
       NikasiGatePass.find(match)
-        .populate({
-          path: 'farmerStorageLinkId',
-          select: 'accountNumber farmerId linkedById',
-          populate: [
-            { path: 'farmerId', select: 'name mobileNumber address' },
-            { path: 'linkedById', select: 'name' },
-          ],
-        })
         .populate({
           path: 'dispatchLedgerId',
           select: 'name address mobileNumber',
@@ -489,22 +505,16 @@ export async function searchNikasiGatePassesByNumber(
       );
     }
 
-    const coldStorageObjectId = new mongoose.Types.ObjectId(coldStorageId);
+    const dispatchLedgerIds =
+      await getDispatchLedgerIdsForColdStorage(coldStorageId);
 
-    const FarmerStorageLink = mongoose.model('FarmerStorageLink');
-    const farmerStorageLinkIds = await FarmerStorageLink.find({
-      coldStorageId: coldStorageObjectId,
-    })
-      .distinct('_id')
-      .lean();
-
-    if (farmerStorageLinkIds.length === 0) {
+    if (dispatchLedgerIds.length === 0) {
       return { nikasiGatePasses: [] };
     }
 
     const filter = {
       $and: [
-        { farmerStorageLinkId: { $in: farmerStorageLinkIds } },
+        { dispatchLedgerId: { $in: dispatchLedgerIds } },
         {
           $or: [
             { gatePassNo: number },
@@ -519,14 +529,6 @@ export async function searchNikasiGatePassesByNumber(
     };
 
     const nikasiGatePasses = await NikasiGatePass.find(filter)
-      .populate({
-        path: 'farmerStorageLinkId',
-        select: 'accountNumber farmerId linkedById',
-        populate: [
-          { path: 'farmerId', select: 'name mobileNumber address' },
-          { path: 'linkedById', select: 'name' },
-        ],
-      })
       .populate({
         path: 'dispatchLedgerId',
         select: 'name address mobileNumber',

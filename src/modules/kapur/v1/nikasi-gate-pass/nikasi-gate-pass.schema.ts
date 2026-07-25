@@ -15,15 +15,6 @@ const nikasiBagSizeSchema = z.object({
 });
 
 export const createNikasiGatePassSchema = z.object({
-  farmerStorageLinkId: z
-    .string()
-    .trim()
-    .min(1, 'Farmer storage link ID is required')
-    .refine(
-      (val) => mongoose.Types.ObjectId.isValid(val),
-      'Invalid farmer storage link ID format'
-    ),
-
   dispatchLedgerId: z
     .string()
     .trim()

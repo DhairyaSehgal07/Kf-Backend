@@ -1035,7 +1035,16 @@ export async function getNextVoucherNumber(
   }
 
   if (type === 'nikasi-gate-pass') {
-    const count = await NikasiGatePass.countDocuments(filter);
+    const dispatchLedgerIds = await DispatchLedger.find({
+      coldStorageId: coldStorageObjectId,
+    })
+      .distinct('_id')
+      .lean();
+
+    const nikasiFilter = {
+      dispatchLedgerId: { $in: dispatchLedgerIds },
+    };
+    const count = await NikasiGatePass.countDocuments(nikasiFilter);
     const next = count + 1;
     logger?.debug({ coldStorageId, type, count, next }, 'Next voucher number');
     return next;
