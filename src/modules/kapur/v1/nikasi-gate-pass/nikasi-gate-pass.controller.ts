@@ -1,12 +1,14 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   createNikasiGatePass,
+  getNikasiGatePassReport,
   getPaginatedNikasiGatePassesByColdStorage,
   searchNikasiGatePassesByNumber,
 } from './nikasi-gate-pass.service.js';
 import {
   createNikasiGatePassSchema,
   CreateNikasiGatePassInput,
+  GetNikasiGatePassReportQuery,
   SearchNikasiGatePassInput,
 } from './nikasi-gate-pass.schema.js';
 import {
@@ -192,6 +194,38 @@ export async function searchNikasiGatePassHandler(
       { error, body: request.body },
       'Error in searchNikasiGatePassHandler'
     );
+    return sendNikasiGatePassError(reply, error);
+  }
+}
+
+/**
+ * Handler for retrieving all nikasi gate passes for report export (no pagination).
+ * Supports optional dateFrom and dateTo filters (inclusive date range).
+ */
+export async function getNikasiGatePassReportHandler(
+  request: FastifyRequest<{
+    Querystring: GetNikasiGatePassReportQuery;
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+
+    const result = await getNikasiGatePassReport(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({
+      success: true,
+      data: {
+        nikasiGatePasses: result.nikasiGatePasses,
+      },
+    });
+  } catch (error) {
+    request.log.error({ error }, 'Error in getNikasiGatePassReportHandler');
     return sendNikasiGatePassError(reply, error);
   }
 }

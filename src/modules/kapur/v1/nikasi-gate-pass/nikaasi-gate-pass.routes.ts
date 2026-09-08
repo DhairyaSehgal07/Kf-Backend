@@ -1,10 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import {
   createNikasiGatePassHandler,
+  getNikasiGatePassReportHandler,
   getNikasiGatePassesByColdStorageHandler,
   searchNikasiGatePassHandler,
 } from './nikasi-gate-pass.controller.js';
-import { searchNikasiGatePassSchema } from './nikasi-gate-pass.schema.js';
+import {
+  getNikasiGatePassReportSchema,
+  searchNikasiGatePassSchema,
+} from './nikasi-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
 
 /** Shared OpenAPI properties for nikasi gate pass documents in list/search responses */
@@ -286,6 +290,92 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     searchNikasiGatePassHandler as never
+  );
+
+  // Get all nikasi gate passes for report (no pagination, optional date range)
+  fastify.get(
+    '/report',
+    {
+      schema: {
+        ...getNikasiGatePassReportSchema,
+        description:
+          "Get nikasi gate pass report rows for the authenticated store admin's cold storage without pagination. Optional inclusive date range via dateFrom and dateTo (ISO dates). Sorted by gate pass number descending.",
+        tags: ['Nikasi Gate Pass'],
+        summary: 'Get nikasi gate pass report',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range start (inclusive). ISO date string, e.g. 2026-03-01.',
+            },
+            dateTo: {
+              type: 'string',
+              format: 'date',
+              description:
+                'Filter by date range end (inclusive). ISO date string, e.g. 2026-03-07.',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Nikasi gate pass report rows for the cold storage (no pagination)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  nikasiGatePasses: {
+                    type: 'array',
+                    items: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Bad request - invalid date format',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getNikasiGatePassReportHandler as never
   );
 
   fastify.get(

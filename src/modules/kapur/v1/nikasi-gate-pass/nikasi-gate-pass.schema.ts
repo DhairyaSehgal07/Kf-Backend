@@ -113,3 +113,71 @@ export const searchNikasiGatePassSchema = z.object({
 export type SearchNikasiGatePassInput = z.infer<
   typeof searchNikasiGatePassSchema
 >['body'];
+
+/** Query schema for nikasi gate pass report (date range only, no pagination) */
+export const getNikasiGatePassReportSchema = z.object({
+  querystring: z.object({
+    dateFrom: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateFrom must be an ISO date, e.g. 2026-03-01'
+      )
+      .optional(),
+    dateTo: z
+      .string()
+      .trim()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        'dateTo must be an ISO date, e.g. 2026-03-07'
+      )
+      .optional(),
+  }),
+});
+
+export type GetNikasiGatePassReportQuery = z.infer<
+  typeof getNikasiGatePassReportSchema
+>['querystring'];
+
+export interface NikasiReportBagSize {
+  size: string;
+  variety: string;
+  quantityIssued: number;
+}
+
+export interface NikasiReportDispatchLedger {
+  _id: string;
+  name: string;
+  address: string;
+  mobileNumber?: string;
+}
+
+export interface NikasiReportCreatedBy {
+  _id: string;
+  name: string;
+}
+
+/** Flat row shape for GET /nikasi-gate-pass/report */
+export interface NikasiReport {
+  _id: string;
+  dispatchLedgerId: NikasiReportDispatchLedger;
+  createdBy?: NikasiReportCreatedBy;
+  gatePassNo: number;
+  manualGatePassNumber?: number;
+  isBooked?: boolean;
+  billNumber?: number;
+  bitliNumber?: number;
+  billBook?: string;
+  biltiBook?: string;
+  category: string;
+  date: string;
+  from: string;
+  to?: string;
+  truckNumber?: string;
+  bagSize: NikasiReportBagSize[];
+  totalBags: number;
+  remarks?: string;
+  netWeight?: number;
+  averageWeightPerBag?: number;
+}

@@ -6,7 +6,10 @@ import {
 } from './nikasi-gate-pass.model.js';
 import { Booking } from '../booking/booking.model.js';
 import { DispatchLedger } from '../dispatch-ledger/dispatch-ledger.model.js';
-import type { CreateNikasiGatePassInput } from './nikasi-gate-pass.schema.js';
+import type {
+  CreateNikasiGatePassInput,
+  NikasiReport,
+} from './nikasi-gate-pass.schema.js';
 import {
   AppError,
   ConflictError,
@@ -26,6 +29,11 @@ export interface GetPaginatedNikasiGatePassesByColdStorageOptions extends Nikasi
   limit?: number;
   page?: number;
   sortOrder?: 'asc' | 'desc';
+}
+
+export interface GetNikasiGatePassReportOptions {
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface NikasiGatePassesPagination {
@@ -562,6 +570,239 @@ export async function searchNikasiGatePassesByNumber(
       'Failed to search nikasi gate passes',
       500,
       'SEARCH_NIKASI_GATE_PASSES_ERROR'
+    );
+  }
+}
+
+function toObjectIdString(value: unknown): string {
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return '';
+}
+
+function formatReportDateTime(date: Date | string | undefined): string {
+  if (date == null) {
+    return '';
+  }
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toISOString();
+}
+
+type NikasiGatePassReportLean = {
+  _id?: unknown;
+  dispatchLedgerId?: {
+    _id?: unknown;
+    name?: string;
+    address?: string;
+    mobileNumber?: string;
+  } | null;
+  createdBy?: {
+    _id?: unknown;
+    name?: string;
+  } | null;
+  gatePassNo: number;
+  manualGatePassNumber?: number;
+  isBooked?: boolean;
+  billNumber?: number;
+  bitliNumber?: number;
+  billBook?: string;
+  biltiBook?: string;
+  category: string;
+  date?: Date | string;
+  from: string;
+  to?: string;
+  truckNumber?: string;
+  bagSize?: Array<{
+    size: string;
+    variety: string;
+    quantityIssued: number;
+  }>;
+  remarks?: string;
+  netWeight?: number;
+  averageWeightPerBag?: number;
+};
+
+function mapNikasiGatePassToReport(
+  pass: NikasiGatePassReportLean
+): NikasiReport {
+  const dispatchLedger: NikasiReport['dispatchLedgerId'] = {
+    _id: toObjectIdString(pass.dispatchLedgerId?._id),
+    name: pass.dispatchLedgerId?.name ?? '',
+    address: pass.dispatchLedgerId?.address ?? '',
+  };
+
+  if (pass.dispatchLedgerId?.mobileNumber != null) {
+    dispatchLedger.mobileNumber = pass.dispatchLedgerId.mobileNumber;
+  }
+
+  const bagSize = pass.bagSize ?? [];
+  const totalBags = bagSize.reduce(
+    (total, line) => total + (line.quantityIssued ?? 0),
+    0
+  );
+
+  const report: NikasiReport = {
+    _id: toObjectIdString(pass._id),
+    dispatchLedgerId: dispatchLedger,
+    gatePassNo: pass.gatePassNo,
+    date: formatReportDateTime(pass.date),
+    category: pass.category,
+    from: pass.from,
+    bagSize,
+    totalBags,
+  };
+
+  if (pass.createdBy) {
+    report.createdBy = {
+      _id: toObjectIdString(pass.createdBy._id),
+      name: pass.createdBy.name ?? '',
+    };
+  }
+
+  if (pass.manualGatePassNumber != null) {
+    report.manualGatePassNumber = pass.manualGatePassNumber;
+  }
+
+  if (pass.isBooked != null) {
+    report.isBooked = pass.isBooked;
+  }
+
+  if (pass.billNumber != null) {
+    report.billNumber = pass.billNumber;
+  }
+
+  if (pass.bitliNumber != null) {
+    report.bitliNumber = pass.bitliNumber;
+  }
+
+  if (pass.billBook != null) {
+    report.billBook = pass.billBook;
+  }
+
+  if (pass.biltiBook != null) {
+    report.biltiBook = pass.biltiBook;
+  }
+
+  if (pass.to != null) {
+    report.to = pass.to;
+  }
+
+  if (pass.truckNumber != null) {
+    report.truckNumber = pass.truckNumber;
+  }
+
+  if (pass.remarks != null) {
+    report.remarks = pass.remarks;
+  }
+
+  if (pass.netWeight != null) {
+    report.netWeight = pass.netWeight;
+  }
+
+  if (pass.averageWeightPerBag != null) {
+    report.averageWeightPerBag = pass.averageWeightPerBag;
+  }
+
+  return report;
+}
+
+/**
+ * Retrieves all nikasi gate passes for a cold storage within an optional date range (no pagination).
+ */
+export async function getNikasiGatePassReport(
+  coldStorageId: string,
+  options: GetNikasiGatePassReportOptions = {},
+  logger?: FastifyBaseLogger
+): Promise<{ nikasiGatePasses: NikasiReport[] }> {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+      throw new ValidationError(
+        'Invalid cold storage ID format',
+        'INVALID_COLD_STORAGE_ID'
+      );
+    }
+
+    const dispatchLedgerIds =
+      await getDispatchLedgerIdsForColdStorage(coldStorageId);
+
+    const filter: Record<string, unknown> = {
+      dispatchLedgerId: { $in: dispatchLedgerIds },
+    };
+
+    if (options.dateFrom != null || options.dateTo != null) {
+      const dateConditions: Record<string, unknown> = {};
+      if (options.dateFrom != null) {
+        const from = new Date(options.dateFrom);
+        if (Number.isNaN(from.getTime())) {
+          throw new ValidationError(
+            'Invalid dateFrom format. Use ISO date, e.g. 2026-03-01',
+            'INVALID_DATE_FROM'
+          );
+        }
+        from.setUTCHours(0, 0, 0, 0);
+        dateConditions.$gte = from;
+      }
+      if (options.dateTo != null) {
+        const to = new Date(options.dateTo);
+        if (Number.isNaN(to.getTime())) {
+          throw new ValidationError(
+            'Invalid dateTo format. Use ISO date, e.g. 2026-03-07',
+            'INVALID_DATE_TO'
+          );
+        }
+        to.setUTCHours(23, 59, 59, 999);
+        dateConditions.$lte = to;
+      }
+      filter.date = dateConditions;
+    }
+
+    const nikasiGatePasses = await NikasiGatePass.find(filter)
+      .populate({
+        path: 'dispatchLedgerId',
+        select: 'name address mobileNumber',
+      })
+      .populate({ path: 'createdBy', select: 'name' })
+      .sort({ gatePassNo: -1, date: -1 })
+      .lean();
+
+    logger?.info(
+      {
+        coldStorageId,
+        count: nikasiGatePasses.length,
+        dateFrom: options.dateFrom,
+        dateTo: options.dateTo,
+      },
+      'Retrieved nikasi gate pass report'
+    );
+
+    return {
+      nikasiGatePasses: (
+        nikasiGatePasses as unknown as NikasiGatePassReportLean[]
+      ).map(mapNikasiGatePassToReport),
+    };
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+
+    logger?.error(
+      { error, coldStorageId },
+      'Error retrieving nikasi gate pass report'
+    );
+
+    throw new AppError(
+      'Failed to retrieve nikasi gate pass report',
+      500,
+      'GET_NIKASI_GATE_PASS_REPORT_ERROR'
     );
   }
 }
