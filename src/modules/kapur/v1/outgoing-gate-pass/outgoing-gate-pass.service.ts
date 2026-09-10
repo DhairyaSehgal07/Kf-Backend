@@ -33,6 +33,7 @@ interface OutgoingValidatedAllocation {
   storageGatePassId: string;
   size: string;
   quantityToAllocate: number;
+  weightInKg: number;
   chamber: string;
   floor: string;
   row: string;
@@ -65,9 +66,10 @@ function allocationLineKey(
   bagType: BagType,
   chamber: string,
   floor: string,
-  row: string
+  row: string,
+  weightInKg: number
 ): string {
-  return `${size}|${bagType}|${chamber}|${floor}|${row}`;
+  return `${size}|${bagType}|${chamber}|${floor}|${row}|${weightInKg}`;
 }
 
 function bagLineKey(
@@ -183,6 +185,7 @@ export function validateOutgoingGatePassInput(
         storageGatePassId: sp.storageGatePassId,
         size: a.size,
         quantityToAllocate: a.quantityToAllocate,
+        weightInKg: a.weightInKg,
         chamber: a.chamber,
         floor: a.floor,
         row: a.row,
@@ -503,7 +506,8 @@ function buildOrderDetails(
         detail.bagType,
         alloc.chamber,
         alloc.floor,
-        alloc.row
+        alloc.row,
+        alloc.weightInKg
       );
       const remaining = Math.max(
         0,
@@ -520,6 +524,7 @@ function buildOrderDetails(
           bagType: detail.bagType,
           quantityIssued: alloc.quantityToAllocate,
           quantityAvailable: remaining,
+          weightInKg: alloc.weightInKg,
           chamber: alloc.chamber,
           floor: alloc.floor,
           row: alloc.row,
@@ -637,9 +642,7 @@ async function formatOutgoingGatePassResponse(
   };
   type PopulatedAdmin = { _id: unknown; name: string };
   const populatedLink = raw.farmerStorageLinkId as
-    | PopulatedLink
-    | null
-    | undefined;
+    PopulatedLink | null | undefined;
   const populatedAdmin = raw.createdBy as PopulatedAdmin | null | undefined;
 
   return {

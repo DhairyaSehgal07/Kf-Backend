@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "sync-indexes": "tsx src/scripts/sync-indexes.ts",
+    "backfill:outgoing-weight": "tsx src/scripts/backfill-outgoing-order-detail-weight.ts",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,json}\"",

@@ -129,6 +129,7 @@ function toOutgoingPayload(
       allocations: sp.allocations.map((a) => ({
         size: a.size,
         quantityToAllocate: a.quantityToAllocate,
+        weightInKg: a.weightInKg,
         chamber: a.chamber,
         floor: a.floor,
         row: a.row,
@@ -226,13 +227,9 @@ function formatPopulatedTransferStockDoc(
   raw: Record<string, unknown>
 ): Record<string, unknown> {
   const fromLink = raw.fromFarmerStorageLinkId as
-    | PopulatedFarmerLink
-    | null
-    | undefined;
+    PopulatedFarmerLink | null | undefined;
   const toLink = raw.toFarmerStorageLinkId as
-    | PopulatedFarmerLink
-    | null
-    | undefined;
+    PopulatedFarmerLink | null | undefined;
   const populatedAdmin = raw.createdBy as PopulatedAdmin | null | undefined;
 
   const formatLink = (link: PopulatedFarmerLink | null | undefined) =>

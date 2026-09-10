@@ -5,6 +5,11 @@ import { BagType } from '../storage-gate-pass/storage-gate-pass.model.js';
    ENUMS
 ======================= */
 
+const twoDecimalFloat = (value: number) => {
+  if (typeof value !== 'number') return value;
+  return Math.round(value * 100) / 100;
+};
+
 export enum OutgoingGatePassStatus {
   ACTIVE = 'ACTIVE',
   CANCELLED = 'CANCELLED',
@@ -20,6 +25,7 @@ export interface IOutgoingOrderDetail {
   bagType: BagType;
   quantityIssued: number;
   quantityAvailable: number;
+  weightInKg: number;
   chamber: string;
   floor: string;
   row: string;
@@ -116,6 +122,13 @@ const OutgoingOrderDetailSchema = new Schema<IOutgoingOrderDetail>(
       type: Number,
       required: true,
       min: 0,
+    },
+
+    weightInKg: {
+      type: Number,
+      required: true,
+      min: 0,
+      set: twoDecimalFloat,
     },
 
     chamber: {

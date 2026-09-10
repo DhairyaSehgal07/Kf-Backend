@@ -76,6 +76,7 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
                       required: [
                         'size',
                         'quantityToAllocate',
+                        'weightInKg',
                         'chamber',
                         'floor',
                         'row',
@@ -83,6 +84,7 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
                       properties: {
                         size: { type: 'string' },
                         quantityToAllocate: { type: 'number' },
+                        weightInKg: { type: 'number' },
                         chamber: { type: 'string' },
                         floor: { type: 'string' },
                         row: { type: 'string' },

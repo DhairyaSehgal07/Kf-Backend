@@ -7,6 +7,14 @@ const outgoingAllocationSchema = z.object({
     .number()
     .int()
     .min(0, 'Quantity to allocate must be non-negative'),
+  weightInKg: z.coerce
+    .number()
+    .min(0, 'Weight in kg must be non-negative')
+    .refine(
+      (val) => Math.abs(val * 100 - Math.round(val * 100)) < 1e-6,
+      'Weight in kg must have at most 2 decimal places'
+    )
+    .transform((val) => Math.round(val * 100) / 100),
   chamber: z.string().trim().min(1, 'Chamber is required'),
   floor: z.string().trim().min(1, 'Floor is required'),
   row: z.string().trim().min(1, 'Row is required'),
