@@ -3,6 +3,7 @@ import {
   createOutgoingGatePass,
   cancelOutgoingGatePass,
   updateOutgoingGatePass,
+  getOutgoingShedSummary,
 } from './outgoing-gate-pass.service.js';
 import {
   createOutgoingGatePassSchema,
@@ -297,5 +298,52 @@ export async function cancelOutgoingGatePassHandler(
             : 'An unexpected error occurred'
           : 'An unexpected error occurred',
     });
+  }
+}
+
+export async function getOutgoingShedSummaryHandler(
+  request: FastifyRequest<{
+    Querystring: { dateFrom?: string; dateTo?: string };
+  }>,
+  reply: FastifyReply
+) {
+  try {
+    const coldStorageId = getColdStorageIdFromRequest(request);
+    const { dateFrom, dateTo } = request.query;
+    const data = await getOutgoingShedSummary(
+      coldStorageId,
+      { dateFrom, dateTo },
+      request.log
+    );
+
+    return reply.send({ success: true, data });
+  } catch (error) {
+    request.log.error(
+      { error, query: request.query },
+      'Error in getOutgoingShedSummaryHandler'
+    );
+
+    if (error instanceof UnauthorizedError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof ValidationError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    throw error;
   }
 }

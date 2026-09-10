@@ -13,6 +13,7 @@ import {
 } from './outgoing-gate-pass-audit.model.js';
 import { StorageGatePass } from '../storage-gate-pass/storage-gate-pass.model.js';
 import type { BagType } from '../storage-gate-pass/storage-gate-pass.model.js';
+import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
 import type {
   CancelOutgoingGatePassInput,
   CreateOutgoingGatePassInput,
@@ -1292,4 +1293,138 @@ export async function recordOutgoingGatePassCreateAudit(
       date: params.date.toISOString(),
     },
   });
+}
+
+/* =======================
+   SHED SUMMARY
+======================= */
+
+export const OUTGOING_TO_SHED_CATEGORY = 'Outgoing to Shed';
+
+export interface OutgoingShedSummaryDateFilters {
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface OutgoingShedSummarySizeRow {
+  size: string;
+  quantity: number;
+}
+
+export interface OutgoingShedSummaryVarietyRow {
+  variety: string;
+  quantity: number;
+  sizes: OutgoingShedSummarySizeRow[];
+}
+
+/**
+ * Variety × size bag totals for ACTIVE outgoing passes with category "Outgoing to Shed".
+ */
+export async function getOutgoingShedSummary(
+  coldStorageId: string,
+  filters: OutgoingShedSummaryDateFilters,
+  logger?: FastifyBaseLogger
+): Promise<OutgoingShedSummaryVarietyRow[]> {
+  if (!mongoose.Types.ObjectId.isValid(coldStorageId)) {
+    throw new ValidationError(
+      'Invalid cold storage ID format',
+      'INVALID_COLD_STORAGE_ID'
+    );
+  }
+
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: new mongoose.Types.ObjectId(coldStorageId),
+  })
+    .distinct('_id')
+    .lean();
+
+  if (farmerStorageLinkIds.length === 0) {
+    return [];
+  }
+
+  const match: Record<string, unknown> = {
+    farmerStorageLinkId: { $in: farmerStorageLinkIds },
+    category: OUTGOING_TO_SHED_CATEGORY,
+    status: OutgoingGatePassStatus.ACTIVE,
+  };
+
+  if (filters.dateFrom) {
+    const start = new Date(filters.dateFrom);
+    if (Number.isNaN(start.getTime())) {
+      throw new ValidationError(
+        'Invalid dateFrom format; use YYYY-MM-DD',
+        'INVALID_DATE_FROM'
+      );
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$gte = start;
+  }
+
+  if (filters.dateTo) {
+    const end = new Date(filters.dateTo);
+    if (Number.isNaN(end.getTime())) {
+      throw new ValidationError(
+        'Invalid dateTo format; use YYYY-MM-DD',
+        'INVALID_DATE_TO'
+      );
+    }
+    end.setUTCHours(23, 59, 59, 999);
+    match.date = (match.date as Record<string, unknown>) ?? {};
+    (match.date as Record<string, unknown>).$lte = end;
+  }
+
+  const grouped = await OutgoingGatePass.aggregate<{
+    _id: { variety: string; size: string };
+    quantity: number;
+  }>([
+    { $match: match },
+    { $unwind: '$orderDetails' },
+    {
+      $group: {
+        _id: {
+          variety: { $ifNull: ['$variety', 'Unspecified'] },
+          size: { $ifNull: ['$orderDetails.size', ''] },
+        },
+        quantity: { $sum: { $ifNull: ['$orderDetails.quantityIssued', 0] } },
+      },
+    },
+  ]);
+
+  const byVariety = new Map<string, Map<string, number>>();
+
+  for (const row of grouped) {
+    const variety = row._id.variety?.trim() || 'Unspecified';
+    const size = row._id.size?.trim() || '';
+
+    let sizeMap = byVariety.get(variety);
+    if (!sizeMap) {
+      sizeMap = new Map();
+      byVariety.set(variety, sizeMap);
+    }
+    sizeMap.set(size, (sizeMap.get(size) ?? 0) + row.quantity);
+  }
+
+  const result: OutgoingShedSummaryVarietyRow[] = [];
+  for (const [variety, sizeMap] of byVariety) {
+    let quantity = 0;
+    const sizes: OutgoingShedSummarySizeRow[] = [];
+
+    for (const [size, sizeQuantity] of sizeMap) {
+      sizes.push({ size, quantity: sizeQuantity });
+      quantity += sizeQuantity;
+    }
+
+    sizes.sort((a, b) => a.size.localeCompare(b.size));
+    result.push({ variety, quantity, sizes });
+  }
+
+  result.sort((a, b) => a.variety.localeCompare(b.variety));
+
+  logger?.info(
+    { coldStorageId, varietyCount: result.length },
+    'Outgoing shed summary computed'
+  );
+
+  return result;
 }

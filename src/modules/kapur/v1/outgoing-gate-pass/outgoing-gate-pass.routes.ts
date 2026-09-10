@@ -3,6 +3,7 @@ import {
   createOutgoingGatePassHandler,
   cancelOutgoingGatePassHandler,
   updateOutgoingGatePassHandler,
+  getOutgoingShedSummaryHandler,
 } from './outgoing-gate-pass.controller.js';
 import { cancelOutgoingGatePassParamsSchema } from './outgoing-gate-pass.schema.js';
 import { authenticate } from '../../../../utils/auth.js';
@@ -172,6 +173,97 @@ export async function outgoingGatePassRoutes(fastify: FastifyInstance) {
       },
     },
     createOutgoingGatePassHandler as never
+  );
+
+  fastify.get(
+    '/shed-summary',
+    {
+      schema: {
+        description:
+          'Get per-variety outgoing-to-shed summary with per-size bag quantities from ACTIVE outgoing gate passes with category "Outgoing to Shed". Optional dateFrom/dateTo filter by gate pass date.',
+        tags: ['Outgoing Gate Pass'],
+        summary: 'Get outgoing-to-shed summary by variety',
+        querystring: {
+          type: 'object',
+          properties: {
+            dateFrom: {
+              type: 'string',
+              description: 'Start date (inclusive), YYYY-MM-DD',
+            },
+            dateTo: {
+              type: 'string',
+              description: 'End date (inclusive), YYYY-MM-DD',
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              'Array of { variety, quantity, sizes } with per-size bag quantity',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    variety: { type: 'string' },
+                    quantity: { type: 'number' },
+                    sizes: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          size: { type: 'string' },
+                          quantity: { type: 'number' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation error (e.g. invalid dateFrom/dateTo)',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Unauthorized or missing cold storage context',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+      preHandler: [authenticate],
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    getOutgoingShedSummaryHandler as never
   );
 
   fastify.put(

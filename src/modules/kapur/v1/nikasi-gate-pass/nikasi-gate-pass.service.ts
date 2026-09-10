@@ -6,6 +6,12 @@ import {
 } from './nikasi-gate-pass.model.js';
 import { Booking } from '../booking/booking.model.js';
 import { DispatchLedger } from '../dispatch-ledger/dispatch-ledger.model.js';
+import { FarmerStorageLink } from '../farmer-storage-link/farmer-storage-link.model.js';
+import {
+  OutgoingGatePass,
+  OutgoingGatePassStatus,
+} from '../outgoing-gate-pass/outgoing-gate-pass.model.js';
+import { OUTGOING_TO_SHED_CATEGORY } from '../outgoing-gate-pass/outgoing-gate-pass.service.js';
 import type {
   CreateNikasiGatePassInput,
   NikasiReport,
@@ -58,6 +64,31 @@ interface BookingDeduction {
   bookingId: Types.ObjectId;
   size: string;
   variety: string;
+  deductAmount: number;
+}
+
+interface ShedOrderDetailLean {
+  size: string;
+  bagType: string;
+  quantityIssued: number;
+  chamber: string;
+  floor: string;
+  row: string;
+}
+
+interface ShedPassLean {
+  _id: Types.ObjectId;
+  variety: string;
+  orderDetails: ShedOrderDetailLean[];
+}
+
+interface ShedDeduction {
+  outgoingGatePassId: Types.ObjectId;
+  size: string;
+  bagType: string;
+  chamber: string;
+  floor: string;
+  row: string;
   deductAmount: number;
 }
 
@@ -248,9 +279,180 @@ async function applyBookingFifoDeductions(
   }
 }
 
+function computeFifoShedDeductions(
+  shedPasses: ShedPassLean[],
+  lines: RequestedBagLine[]
+): ShedDeduction[] {
+  const aggregated = new Map<
+    string,
+    { size: string; variety: string; total: number }
+  >();
+
+  for (const line of lines) {
+    const key = bagLineKey(line.size, line.variety);
+    const existing = aggregated.get(key);
+    if (existing) {
+      existing.total += line.quantityIssued;
+    } else {
+      aggregated.set(key, {
+        size: line.size,
+        variety: line.variety,
+        total: line.quantityIssued,
+      });
+    }
+  }
+
+  const remainingByLine = new Map<string, number>();
+  const deductions: ShedDeduction[] = [];
+
+  for (const { size, variety, total } of aggregated.values()) {
+    if (total <= 0) {
+      continue;
+    }
+
+    let remaining = total;
+    let available = 0;
+
+    for (const pass of shedPasses) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      if (pass.variety !== variety) {
+        continue;
+      }
+
+      for (let index = 0; index < pass.orderDetails.length; index++) {
+        if (remaining <= 0) {
+          break;
+        }
+
+        const detail = pass.orderDetails[index];
+        if (!detail || detail.size !== size) {
+          continue;
+        }
+
+        const lineKey = `${pass._id.toString()}::${index}`;
+        const lineRemaining =
+          remainingByLine.get(lineKey) ?? detail.quantityIssued;
+        if (lineRemaining <= 0) {
+          continue;
+        }
+
+        available += lineRemaining;
+        const deductAmount = Math.min(remaining, lineRemaining);
+        deductions.push({
+          outgoingGatePassId: pass._id,
+          size: detail.size,
+          bagType: detail.bagType,
+          chamber: detail.chamber,
+          floor: detail.floor,
+          row: detail.row,
+          deductAmount,
+        });
+        remainingByLine.set(lineKey, lineRemaining - deductAmount);
+        remaining -= deductAmount;
+      }
+    }
+
+    if (remaining > 0) {
+      throw new ValidationError(
+        `Insufficient shed quantity for size "${size}" variety "${variety}": requested ${total}, available ${available}`,
+        'INSUFFICIENT_SHED_STOCK'
+      );
+    }
+  }
+
+  return deductions;
+}
+
+function prepareShedBulkOps(
+  deductions: ShedDeduction[]
+): mongoose.mongo.AnyBulkWriteOperation<typeof OutgoingGatePass.prototype>[] {
+  const bulkOps: Array<{
+    updateOne: {
+      filter: Record<string, unknown>;
+      update: Record<string, unknown>;
+      arrayFilters?: Array<Record<string, unknown>>;
+    };
+  }> = [];
+
+  for (const deduction of deductions) {
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: deduction.outgoingGatePassId },
+        update: {
+          $inc: {
+            'orderDetails.$[elem].quantityIssued': -deduction.deductAmount,
+          },
+        },
+        arrayFilters: [
+          {
+            'elem.size': deduction.size,
+            'elem.bagType': deduction.bagType,
+            'elem.chamber': deduction.chamber,
+            'elem.floor': deduction.floor,
+            'elem.row': deduction.row,
+            'elem.quantityIssued': { $gte: deduction.deductAmount },
+          },
+        ],
+      },
+    });
+  }
+
+  return bulkOps as mongoose.mongo.AnyBulkWriteOperation<
+    typeof OutgoingGatePass.prototype
+  >[];
+}
+
+async function applyShedFifoDeductions(
+  coldStorageId: string,
+  lines: RequestedBagLine[],
+  session: ClientSession
+): Promise<void> {
+  const farmerStorageLinkIds = await FarmerStorageLink.find({
+    coldStorageId: new Types.ObjectId(coldStorageId),
+  })
+    .distinct('_id')
+    .session(session)
+    .lean();
+
+  const shedPasses =
+    farmerStorageLinkIds.length === 0
+      ? []
+      : await OutgoingGatePass.find({
+          farmerStorageLinkId: { $in: farmerStorageLinkIds },
+          category: OUTGOING_TO_SHED_CATEGORY,
+          status: OutgoingGatePassStatus.ACTIVE,
+        })
+          .sort({ date: 1, gatePassNo: 1 })
+          .select('variety gatePassNo date orderDetails')
+          .session(session)
+          .lean<ShedPassLean[]>();
+
+  const deductions = computeFifoShedDeductions(shedPasses, lines);
+  if (deductions.length === 0) {
+    return;
+  }
+
+  const bulkOps = prepareShedBulkOps(deductions);
+  const updateResult = await OutgoingGatePass.bulkWrite(
+    bulkOps as Parameters<typeof OutgoingGatePass.bulkWrite>[0],
+    { session }
+  );
+
+  if (updateResult.modifiedCount !== bulkOps.length) {
+    throw new ConflictError(
+      `Expected ${bulkOps.length} shed updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
+      'CONCURRENT_MODIFICATION'
+    );
+  }
+}
+
 /**
- * Creates a nikasi gate pass. When isBooked is true, deducts quantities from
- * booking gate passes for the dispatch ledger using FIFO (date asc, gatePassNo asc).
+ * Creates a nikasi gate pass. Always deducts bag lines from ACTIVE outgoing-to-shed
+ * stock for the cold storage (FIFO by date, gatePassNo). When isBooked is true,
+ * also deducts the same lines from booking gate passes for the dispatch ledger.
  */
 export async function createNikasiGatePass(
   coldStorageId: string,
@@ -333,6 +535,8 @@ export async function createNikasiGatePass(
         'GATE_PASS_NUMBER_EXISTS'
       );
     }
+
+    await applyShedFifoDeductions(coldStorageId, payload.bagSize, session);
 
     if (payload.isBooked) {
       await applyBookingFifoDeductions(

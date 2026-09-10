@@ -168,7 +168,7 @@ export async function nikasiGatePassRoutes(fastify: FastifyInstance) {
           },
           400: {
             description:
-              'Bad request (validation error or insufficient booked stock)',
+              'Bad request (validation error, insufficient shed stock, or insufficient booked stock)',
             type: 'object',
             properties: {
               status: { type: 'string' },
