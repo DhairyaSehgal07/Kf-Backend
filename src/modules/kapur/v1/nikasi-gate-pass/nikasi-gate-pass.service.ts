@@ -211,42 +211,6 @@ function computeFifoBookingDeductions(
   return deductions;
 }
 
-function prepareBookingBulkOps(
-  deductions: BookingDeduction[]
-): mongoose.mongo.AnyBulkWriteOperation<typeof Booking.prototype>[] {
-  const bulkOps: Array<{
-    updateOne: {
-      filter: Record<string, unknown>;
-      update: Record<string, unknown>;
-      arrayFilters?: Array<Record<string, unknown>>;
-    };
-  }> = [];
-
-  for (const deduction of deductions) {
-    bulkOps.push({
-      updateOne: {
-        filter: { _id: deduction.bookingId },
-        update: {
-          $inc: {
-            'bagSizes.$[elem].currentQuantity': -deduction.deductAmount,
-          },
-        },
-        arrayFilters: [
-          {
-            'elem.size': deduction.size,
-            'elem.variety': deduction.variety,
-            'elem.currentQuantity': { $gte: deduction.deductAmount },
-          },
-        ],
-      },
-    });
-  }
-
-  return bulkOps as mongoose.mongo.AnyBulkWriteOperation<
-    typeof Booking.prototype
-  >[];
-}
-
 async function applyBookingFifoDeductions(
   dispatchLedgerId: string,
   lines: RequestedBagLine[],
@@ -265,17 +229,32 @@ async function applyBookingFifoDeductions(
     return;
   }
 
-  const bulkOps = prepareBookingBulkOps(deductions);
-  const updateResult = await Booking.bulkWrite(
-    bulkOps as Parameters<typeof Booking.bulkWrite>[0],
-    { session }
-  );
-
-  if (updateResult.modifiedCount !== bulkOps.length) {
-    throw new ConflictError(
-      `Expected ${bulkOps.length} booking updates, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
-      'CONCURRENT_MODIFICATION'
+  for (const deduction of deductions) {
+    const updateResult = await Booking.updateOne(
+      {
+        _id: deduction.bookingId,
+        bagSizes: {
+          $elemMatch: {
+            size: deduction.size,
+            variety: deduction.variety,
+            currentQuantity: { $gte: deduction.deductAmount },
+          },
+        },
+      },
+      {
+        $inc: {
+          'bagSizes.$.currentQuantity': -deduction.deductAmount,
+        },
+      },
+      { session }
     );
+
+    if (updateResult.modifiedCount !== 1) {
+      throw new ConflictError(
+        `Expected 1 booking update, got ${updateResult.modifiedCount}. Concurrent modification detected.`,
+        'CONCURRENT_MODIFICATION'
+      );
+    }
   }
 }
 
